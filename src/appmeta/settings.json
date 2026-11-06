@@ -1,0 +1,30 @@
+{
+  "format_version": 1,
+  "version": 1,
+  "fields": {
+    "token": {
+      "type": "string",
+      "label": "Notion token",
+      "description": "A Notion personal access token, or an internal connection's API token shared with your list. Anyone who can open this page can read it: protect the bar's HTTP API with a password.",
+      "default": "",
+      "max_length": 255
+    },
+    "list": {
+      "type": "string",
+      "label": "Start page (optional)",
+      "description": "Leave empty to start from your top-level pages. Or paste a link to a page or database to start there: in Notion, ... menu > Copy link.",
+      "default": "",
+      "max_length": 255
+    },
+    "scope": {
+      "type": "enum",
+      "label": "Show",
+      "description": "Which rows a database shows, when it has a date. A page always shows every unchecked to-do.",
+      "default": "today",
+      "options": [
+        { "value": "today", "label": "Due today and overdue" },
+        { "value": "all", "label": "All open tasks" }
+      ]
+    }
+  }
+}
