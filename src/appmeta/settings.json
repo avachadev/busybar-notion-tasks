@@ -19,7 +19,7 @@
     "scope": {
       "type": "enum",
       "label": "Show",
-      "description": "Which rows a database shows, when it has a date. A page always shows every unchecked to-do.",
+      "description": "Which rows a database shows, when it has a date. A page always shows all its to-dos, ticked or not.",
       "default": "today",
       "options": [
         { "value": "today", "label": "Due today and overdue" },

@@ -1,7 +1,7 @@
 {
   "name": "busybar-notion-tasks",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "BUSY Bar app: today's Notion tasks on the front screen, closed with a button",
   "author": "avachadev",
   "type": "module",

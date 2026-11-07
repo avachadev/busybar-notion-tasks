@@ -6,6 +6,7 @@ import {
   type Entry,
   type Scope,
   entriesFromBlocks,
+  foundInSearch,
   localDate,
   localDayStart,
   plainText,
@@ -13,7 +14,7 @@ import {
   queryPath,
   readSchema,
   openFirst,
-  rootsFromSearch,
+  pickRoots,
   setDoneCall,
   tasksFromQuery,
 } from "./tasks.ts";
@@ -91,18 +92,22 @@ async function readPage(token: string, id: string, alive: Alive): Promise<Entry[
  * is not in the API either.
  */
 async function readRoot(token: string, alive: Alive): Promise<Entry[]> {
-  let entries: Entry[] = [];
+  let found: ReturnType<typeof foundInSearch> = [];
   let cursor = "";
+  let searchedAll = false;
   for (let i = 0; i < MAX_SEARCH_PAGES; i += 1) {
     const body: Json = { filter: { property: "object", value: "page" }, page_size: SEARCH_PER_PAGE };
     if (cursor) body.start_cursor = cursor;
     check(alive);
     const response = await call(token, "POST", "search", body);
-    entries = entries.concat(rootsFromSearch(response));
-    if (response.has_more !== true || typeof response.next_cursor !== "string") break;
+    found = found.concat(foundInSearch(response));
+    if (response.has_more !== true || typeof response.next_cursor !== "string") {
+      searchedAll = true;
+      break;
+    }
     cursor = response.next_cursor;
   }
-  return entries.sort((a, b) => (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
+  return pickRoots(found, searchedAll).sort((a, b) => (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
 }
 
 /**

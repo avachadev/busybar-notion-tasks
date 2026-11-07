@@ -132,6 +132,8 @@ function main(): void {
 
   /** What is on screen now, by element id, as last sent. */
   let onScreen: Record<string, string> = {};
+  /** Bumped when what is on screen stops being known; a draw begun before then must not record its frame. */
+  let screenEpoch = 0;
   let drawing = false;
   let dirty = false;
 
@@ -145,6 +147,7 @@ function main(): void {
    * by itself: clearing then fails with "not displaying anything".
    */
   async function show(elements: Element[]): Promise<void> {
+    const epoch = screenEpoch;
     const next: Record<string, string> = {};
     const changed = [];
     for (const element of elements) {
@@ -156,15 +159,17 @@ function main(): void {
     try {
       if (changed.length > 0) await drawElements(APP, changed);
       if (gone.length > 0) await clearElements(APP, gone);
-      onScreen = next;
+      // Back can wipe the screen while this draw is out; then the next frame goes whole.
+      if (epoch === screenEpoch) onScreen = next;
     } catch (err) {
       onScreen = {};
       throw err;
     }
   }
 
-  /** Forgets what is on screen, so the next frame is sent whole. */
+  /** Forgets what is on screen, so the next frame is sent whole, even if a draw is out right now. */
   function redrawAll(): void {
+    screenEpoch += 1;
     onScreen = {};
     redraw();
   }
@@ -199,8 +204,16 @@ function main(): void {
       dirty = true;
       return;
     }
+    let elements: Element[];
+    try {
+      elements = frame();
+    } catch (err) {
+      // A bad frame is reported, and the next change draws again rather than never.
+      report("frame", err);
+      return;
+    }
     drawing = true;
-    void show(frame())
+    void show(elements)
       .catch((err: unknown) => report("draw", err))
       .then(() => {
         drawing = false;
@@ -276,9 +289,10 @@ function main(): void {
     const nextKey = configKey(next);
     if (nextKey === key) return;
     const firstRead = config === null;
+    // Ticks made under the old settings go out with the old token, before it is replaced.
+    flushPending();
     key = nextKey;
     config = next;
-    flushPending();
     settled.clear();
     remembered.clear();
     databases.clear();
@@ -315,7 +329,7 @@ function main(): void {
     const readKey = key;
     const view = current();
     const depth = stack.length;
-    const still = () => readKey === key && stack.length === depth && current() === view;
+    const still = () => !stopped && readKey === key && stack.length === depth && current() === view;
     try {
       // A read of a view the user has left stops at its next request, so the new view's read is not kept waiting.
       const result = await readView(token, view, c.scope, new Date(), databases, still);

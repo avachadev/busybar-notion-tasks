@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { entriesFromBlocks, localDate, localDayStart, openFirst, plainText, queryBody, queryPath, readSchema, rootsFromSearch, setDoneCall, tasksFromQuery } from "../src/tasks.ts";
+import { entriesFromBlocks, foundInSearch, pickRoots, localDate, localDayStart, openFirst, plainText, queryBody, queryPath, readSchema, setDoneCall, tasksFromQuery } from "../src/tasks.ts";
 
 const rt = (s: string) => [{ type: "text", plain_text: s }];
 
@@ -143,15 +143,36 @@ test("a page lists its subpages, databases and to-dos, in order", () => {
   ]);
 });
 
+const searchPage = (id: string, parent: Record<string, unknown>, title: string) => ({
+  object: "page",
+  id,
+  parent,
+  properties: { title: { type: "title", title: rt(title) } },
+});
+
 test("top-level pages are the ones under the workspace", () => {
-  const roots = rootsFromSearch({
+  const found = foundInSearch({
     results: [
-      { object: "page", id: "r", parent: { type: "workspace", workspace: true }, properties: { title: { type: "title", title: rt("\u0421\u043f\u0438\u0441\u043a\u0438 \u0434\u0435\u043b") } } },
-      { object: "page", id: "c", parent: { type: "page_id", page_id: "r" }, properties: { title: { type: "title", title: rt("2025") } } },
+      searchPage("r", { type: "workspace", workspace: true }, "Lists"),
+      searchPage("c", { type: "page_id", page_id: "r" }, "2025"),
       { object: "page", id: "t", in_trash: true, parent: { type: "workspace" }, properties: {} },
     ],
   });
-  assert.deepEqual(roots, [{ kind: "page", id: "r", title: "\u0421\u043f\u0438\u0441\u043a\u0438 \u0434\u0435\u043b" }]);
+  assert.deepEqual(pickRoots(found, true), [{ kind: "page", id: "r", title: "Lists" }]);
+});
+
+test("a page shared deeper down counts as top level once the search is complete", () => {
+  // An internal connection shared with "Tasks", which lives under a page it cannot see.
+  const found = foundInSearch({
+    results: [
+      searchPage("tasks", { type: "page_id", page_id: "hidden" }, "Tasks"),
+      searchPage("sub", { type: "page_id", page_id: "tasks" }, "Today"),
+      searchPage("row", { type: "data_source_id", data_source_id: "ds" }, "A database row"),
+    ],
+  });
+  assert.deepEqual(pickRoots(found, true).map((e) => e.id), ["tasks"]);
+  // With results left unread the parent may just be further on, so only the workspace counts.
+  assert.deepEqual(pickRoots(found, false), []);
 });
 
 test("long titles are capped", () => {

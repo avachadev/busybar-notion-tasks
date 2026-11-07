@@ -2,7 +2,7 @@
   "format_version": 1,
   "id": "app.avachadev.notiontasks",
   "name": "Tasks for Notion",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api_version": "27.12.0",
   "description": "Today's tasks from a Notion database or checklist, closed with a button",
   "author": "avachadev",

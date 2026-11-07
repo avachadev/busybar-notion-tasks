@@ -36,3 +36,20 @@ test("a wanted read follows a long page to its end", async () => {
   assert.equal(notion.calls.length, 4);
   assert.equal(loaded.entries.length, 4);
 });
+
+test("a timed-out call keeps the next one off the wire until it has finished", async () => {
+  const { call } = await import("../src/notion.ts");
+  let open = 0;
+  let most = 0;
+  globalThis.fetch = (async () => {
+    open += 1;
+    most = Math.max(most, open);
+    await new Promise((done) => setTimeout(done, 60));
+    open -= 1;
+    return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+  }) as typeof fetch;
+  // The first caller gives up after 10 ms; its request is still out.
+  await assert.rejects(call("t", "GET", "a", undefined, 10), /timeout/);
+  await call("t", "GET", "b");
+  assert.equal(most, 1);
+});

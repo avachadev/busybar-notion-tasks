@@ -21,7 +21,7 @@ export class NotionError extends Error {
   }
 }
 
-/** Rejects a request that never answers, so a stalled call cannot block the next one. */
+/** Rejects when `work` takes longer than `ms`. The work itself carries on. */
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let settled = false;
@@ -48,12 +48,42 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/** TLS on the bar is slow: a call takes about ten seconds, so allow for more. */
+/** How long a caller waits, its turn on the wire included. A call usually takes a few seconds. */
 const TIMEOUT_MS = 30000;
 
 export type Json = Record<string, unknown>;
 
-export async function call(token: string, method: string, path: string, body?: unknown): Promise<Json> {
+interface Answer {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly json: Json | null;
+}
+
+/**
+ * The request on the wire. The next one starts only once it has settled, even
+ * when its caller has given up on a timeout: the firmware cannot abort a fetch,
+ * and two HTTPS requests at once have rebooted the bar.
+ */
+let onWire: Promise<unknown> = Promise.resolve();
+
+async function exchange(url: string, init: RequestInit): Promise<Answer> {
+  const response = await fetch(url, init);
+  let json: Json | null = null;
+  try {
+    json = (await response.json()) as Json;
+  } catch {
+    // An error page that is not JSON: the status says enough.
+  }
+  return { ok: response.ok, status: response.status, json };
+}
+
+export async function call(
+  token: string,
+  method: string,
+  path: string,
+  body?: unknown,
+  timeoutMs = TIMEOUT_MS,
+): Promise<Json> {
   const init: RequestInit = {
     method,
     headers: {
@@ -65,17 +95,16 @@ export async function call(token: string, method: string, path: string, body?: u
   // The firmware rejects a `body` key that is not a string, so leave it out when there is none.
   if (body !== undefined) init.body = JSON.stringify(body);
 
-  const response = await withTimeout(fetch(API_BASE + path, init), TIMEOUT_MS);
-  let json: Json = {};
-  try {
-    json = (await withTimeout(response.json(), TIMEOUT_MS)) as Json;
-  } catch {
-    if (response.ok) throw new Error("unreadable response");
-  }
-  if (!response.ok) {
+  const turn = onWire.then(() => exchange(API_BASE + path, init));
+  onWire = turn.catch(() => undefined);
+  const answer = await withTimeout(turn, timeoutMs);
+
+  const json = answer.json ?? {};
+  if (!answer.ok) {
     const code = typeof json.code === "string" ? json.code : "";
-    const message = typeof json.message === "string" ? json.message : `HTTP ${response.status}`;
-    throw new NotionError(response.status, code, message);
+    const message = typeof json.message === "string" ? json.message : `HTTP ${answer.status}`;
+    throw new NotionError(answer.status, code, message);
   }
+  if (answer.json === null) throw new Error("unreadable response");
   return json;
 }

@@ -250,19 +250,47 @@ export function pageTitle(page: Json): string {
   return "";
 }
 
-/**
- * Top-level pages among search results: the ones whose parent is the
- * workspace, as in the sidebar's Private and teamspace sections.
- */
-export function rootsFromSearch(response: Json): Entry[] {
-  const entries: Entry[] = [];
+/** A page from the search, with what it hangs off. */
+export interface Found {
+  readonly entry: Entry;
+  /** "workspace", "page_id", "block_id", "data_source_id" or "database_id". */
+  readonly parentType: string;
+  readonly parentId: string;
+}
+
+/** Pages in one page of search results, with their parents. */
+export function foundInSearch(response: Json): Found[] {
+  const found: Found[] = [];
   for (const item of list(response.results)) {
     const page = record(item);
     if (page.object !== "page" || page.in_trash === true) continue;
-    if (record(page.parent).type !== "workspace") continue;
-    entries.push({ kind: "page", id: str(page.id), title: pageTitle(page) || "Untitled" });
+    const parent = record(page.parent);
+    const parentType = str(parent.type);
+    found.push({
+      entry: { kind: "page", id: str(page.id), title: pageTitle(page) || "Untitled" },
+      parentType,
+      parentId: str(parent[parentType]),
+    });
   }
-  return entries;
+  return found;
+}
+
+/**
+ * The top level, as the sidebar shows it: pages under the workspace. An
+ * internal connection may be shared with a page deeper down; its parent is
+ * then out of reach and never in the results. When the search was read to its
+ * end, such pages count as top level too. Database rows never do.
+ */
+export function pickRoots(found: readonly Found[], searchedAll: boolean): Entry[] {
+  const ids = new Set(found.map((f) => f.entry.id));
+  const roots: Entry[] = [];
+  for (const f of found) {
+    if (f.parentType === "workspace") roots.push(f.entry);
+    else if (searchedAll && (f.parentType === "page_id" || f.parentType === "block_id") && !ids.has(f.parentId)) {
+      roots.push(f.entry);
+    }
+  }
+  return roots;
 }
 
 /** The call that ticks a task off, or back on when `done` is false. */
