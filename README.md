@@ -149,11 +149,12 @@ path you were on and the titles shown there.
 
 ## How the screen is drawn
 
-The layout follows the BUSY Bar Figma design `notion_frontscreen_tasks_list`. Entries are 9 px rows,
-10 px apart, the whole width of the screen, with the focused one in the middle on rows 3–11 and its
-neighbours cut by the screen's edges. With the **Notion logo** setting on, the app's 8×8 icon sits at
-the left edge and the rows start 2 px right of it, 10 px shorter in their flat middle. Row backgrounds
-and checkboxes are PNGs from the design, under `src/images`. Text is in the bar's `small` font, so Cyrillic titles work too.
+The layout follows the BUSY Bar Figma design `notion_frontscreen_tasks_list`. Lines use the whole
+width of the screen, with the focused one in the middle and its neighbours cut by the screen's edges.
+With the **Notion logo** setting on, the app's 8×8 icon sits at the left edge and the lines start 2 px
+right of it. A task's plate is a rectangle with a 1 px border and rounded corners, and the checkboxes
+and marks are XPM bitmaps sent with the draw: the bar reads an image file on every draw, and these
+cost it nothing of the kind. Text is in the bar's `small` font, so Cyrillic titles work too.
 
 The confetti is three pre-rendered animations, played by the bar itself at 30 fps: a burst, a fountain
 and streamers. Each tick plays one of them, never the same twice in a row. To change them, edit
@@ -193,7 +194,7 @@ Over Wi-Fi add `-- --addr <bar-ip>` (and `--password <password>` if the bar has 
 | `src/cache.ts` | Keeps the path and what it showed in `localStorage`. |
 | `src/screen.ts`, `src/layout.ts` | Display elements and geometry. |
 | `src/display.ts` | Draws through the bar's local HTTP API. |
-| `src/images`, `src/animations` | Images from the design; the confetti. |
+| `src/images`, `src/animations` | The logo; the confetti. |
 | `tools/confetti.py` | Renders the confetti frames. |
 | `test/` | Unit tests, run with Node's built-in test runner. |
 
