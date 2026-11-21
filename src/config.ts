@@ -8,6 +8,8 @@ export interface Config {
   readonly token: string | null;
   readonly link: ListLink;
   readonly scope: Scope;
+  /** The Notion logo at the left of the screen, for photos and videos. */
+  readonly logo: boolean;
 }
 
 const SETTINGS_URL = "http://127.0.0.1/api/apps/settings?app_id=";
@@ -23,10 +25,11 @@ export async function readConfig(appId: string): Promise<Config> {
     token: parseToken(text(values.token)),
     link: parseListLink(text(values.list)),
     scope: values.scope === "all" ? "all" : "today",
+    logo: values.logo === true,
   };
 }
 
-/** A key that changes whenever the settings mean something different. */
+/** A key that changes whenever the settings mean other Notion content; the logo only changes the look. */
 export function configKey(c: Config): string {
   const link = c.link.kind === "id" ? c.link.id : c.link.kind === "invalid" ? `?${c.link.text}` : "";
   return `${c.token ?? "?"}|${link}|${c.scope}`;

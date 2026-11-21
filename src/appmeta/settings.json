@@ -17,6 +17,12 @@
       "default": "",
       "max_length": 255
     },
+    "logo": {
+      "type": "boolean",
+      "label": "Notion logo",
+      "description": "Shows the Notion logo at the left of the screen, for photos and videos. Off: the list takes the whole screen.",
+      "default": false
+    },
     "scope": {
       "type": "enum",
       "label": "Show",

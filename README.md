@@ -89,6 +89,7 @@ so "ticked off today" means a done row edited since midnight by the bar's clock.
 | **Notion token** | The personal access token or the connection's token. |
 | **Start page** | Optional. Leave it empty to start from your top-level pages, or paste a link to a page or a database (**••• → Copy link** in Notion) to start there. |
 | **Show** | For databases with a date: *Due today, overdue or undated* (the default) or *All open tasks*. Pages always show every to-do. |
+| **Notion logo** | Off by default. On: the Notion logo at the left of the screen, for photos and videos. |
 
 Changes apply within a few seconds, without restarting the app.
 
@@ -106,7 +107,7 @@ Changes apply within a few seconds, without restarting the app.
 | `Notion down` | Notion answers with a server error. The app keeps trying. |
 | `Notion error` | Notion refused the request; the second line is its error code. |
 | `Not saved` | A tick did not reach Notion after three tries. |
-| Orange dot above the icon | The list is from the last good read; the latest one failed. |
+| Orange dot in the top right corner (above the logo, with the logo on) | The list is from the last good read; the latest one failed. |
 | `All done` | The database has nothing left for today. |
 
 ## Security
@@ -138,11 +139,11 @@ path you were on and the titles shown there.
 
 ## How the screen is drawn
 
-The layout follows the BUSY Bar Figma design `notion_frontscreen_tasks_list`. The app's 8×8 icon sits
-at the left edge of every screen. Entries are 9 px rows, 10 px apart, with the focused one in the
-middle on rows 3–11 and its neighbours cut by the screen's edges. Row backgrounds and checkboxes are
-PNGs from the design, under `src/images`; the rows were cut to 62 px in their flat middle to make room
-for the icon. Text is in the bar's `small` font, so Cyrillic titles work too.
+The layout follows the BUSY Bar Figma design `notion_frontscreen_tasks_list`. Entries are 9 px rows,
+10 px apart, the whole width of the screen, with the focused one in the middle on rows 3–11 and its
+neighbours cut by the screen's edges. With the **Notion logo** setting on, the app's 8×8 icon sits at
+the left edge and the rows start 2 px right of it, 10 px shorter in their flat middle. Row backgrounds
+and checkboxes are PNGs from the design, under `src/images`. Text is in the bar's `small` font, so Cyrillic titles work too.
 
 The confetti is three pre-rendered animations, played by the bar itself at 30 fps: a burst, a fountain
 and streamers. Each tick plays one of them, never the same twice in a row. To change them, edit

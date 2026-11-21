@@ -14,8 +14,20 @@ test("text widths match the device", () => {
   assert.equal(textWidth("CPU 92%"), 30);
 });
 
-test("the focused row sits in the middle, its neighbours at the edges", () => {
+test("without the logo the list takes the whole screen", () => {
   const els = byId(listFrame([todo("a", "One"), todo("b", "Two"), todo("c", "Three")], 1, new Set()));
+  assert.equal(els.icon, undefined);
+  assert.equal(els.row1.x, 0);
+  assert.equal(els.row1.path, "images/row_idle_wide.png");
+  assert.equal(els.box1.x, 1);
+  assert.equal(els.text1.x, 11);
+  const msg = byId(messageFrame("All done", "for today"));
+  assert.equal(msg.icon, undefined);
+  assert.equal(msg.m_title.x, 36);
+});
+
+test("with the logo the focused row sits in the middle beside the icon, its neighbours at the edges", () => {
+  const els = byId(listFrame([todo("a", "One"), todo("b", "Two"), todo("c", "Three")], 1, new Set(), true));
   assert.equal(els.icon.x, 0);
   assert.equal(els.icon.y, 4);
   assert.equal(els.row1.x, 10);
@@ -34,7 +46,7 @@ test("the first entry has nothing above it", () => {
 });
 
 test("a ticked task gets the highlighted row, the blue checkbox and faded text", () => {
-  const els = byId(listFrame([todo("a", "One"), todo("b", "Two")], 0, new Set(["a"])));
+  const els = byId(listFrame([todo("a", "One"), todo("b", "Two")], 0, new Set(["a"]), true));
   assert.equal(els.row1.path, "images/row_done.png");
   assert.equal(els.box1.path, "images/checkbox_done.png");
   assert.equal(els.text1.color, "#FFFFFF66");
@@ -62,7 +74,7 @@ test("pages and databases get a mark instead of a checkbox, under ids of their o
 });
 
 test("messages are two centred lines", () => {
-  const els = byId(messageFrame("All done", "for today"));
+  const els = byId(messageFrame("All done", "for today", true));
   // The icon stays above the backdrop, so it is on every screen.
   assert.ok((els.icon.z_index as number) > (els.m_backdrop.z_index as number));
   assert.equal(els.m_title.x, 41);

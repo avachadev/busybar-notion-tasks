@@ -18,7 +18,7 @@ import { type Level, load, save } from "./cache.ts";
 import { type Config, configKey, readConfig, tokenTag, usable } from "./config.ts";
 import { clearElements, drawElements } from "./display.ts";
 import { NotionError } from "./notion.ts";
-import { type Element, listFrame, messageFrame, staleMark } from "./screen.ts";
+import { type Element, listFrame, messageFrame as message, staleMark } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
 import { type Database, type Entry, isTask, mergeRoots } from "./tasks.ts";
 
@@ -212,6 +212,8 @@ function main(): void {
   }
 
   function content(): Element[] {
+    const logo = config?.logo === true;
+    const messageFrame = (title: string, detail: string) => message(title, detail, logo);
     if (!config) return messageFrame("Loading", "settings");
     if (config.token === "") return messageFrame("Set token", "in settings");
     if (config.token === null) return messageFrame("Bad token", "check the settings");
@@ -231,8 +233,8 @@ function main(): void {
     }
     const done = new Set<string>();
     for (const e of entries) if (isTask(e) && isDone(e)) done.add(e.id);
-    const list = listFrame(entries, selected, done);
-    if (stale) list.push(staleMark());
+    const list = listFrame(entries, selected, done, logo);
+    if (stale) list.push(staleMark(logo));
     return list;
   }
 
@@ -334,7 +336,11 @@ function main(): void {
       return;
     }
     const nextKey = configKey(next);
-    if (nextKey === key) return;
+    if (nextKey === key) {
+      // Only the look changed: the place and the list stay.
+      if (config && config.logo !== next.logo) config = next;
+      return;
+    }
     const firstRead = config === null;
     // Ticks made under the old settings go out with the old token.
     flushPending();
