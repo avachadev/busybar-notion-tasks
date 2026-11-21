@@ -33,13 +33,13 @@ test("the first entry has nothing above it", () => {
   assert.ok(ids.includes("row1") && ids.includes("row2"));
 });
 
-test("a ticked task gets the highlighted row, the blue checkbox and white text", () => {
+test("a ticked task gets the highlighted row, the blue checkbox and faded text", () => {
   const els = byId(listFrame([todo("a", "One"), todo("b", "Two")], 0, new Set(["a"])));
   assert.equal(els.row1.path, "images/row_done.png");
   assert.equal(els.box1.path, "images/checkbox_done.png");
-  assert.equal(els.text1.color, "#FFFFFFFF");
+  assert.equal(els.text1.color, "#FFFFFF66");
   assert.equal(els.row2.path, "images/row_idle.png");
-  assert.equal(els.text2.color, "#FFFFFF66");
+  assert.equal(els.text2.color, "#FFFFFFFF");
 });
 
 test("only the focused line scrolls", () => {

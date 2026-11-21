@@ -52,16 +52,17 @@ Either of these works.
 | --- | --- |
 | Page | An arrow ▸ |
 | Database | A small grid |
-| Open task | An empty checkbox, dimmed text |
-| Ticked task | A blue checkbox, highlighted row, white text |
+| Open task | An empty checkbox, white text |
+| Ticked task | A blue checkbox, highlighted row, faded text |
 
 A tick goes to Notion 1.5 seconds after the press; a second press within that time takes it back
 without any request. Leaving the page sends the ticks made on it right away. A tick that does not get
 through is sent twice more; if it still fails, the bar says `Not saved` and the task shows what Notion has.
 
 The open page or database is read again every 5 seconds, once the wheel has been still for 2 seconds:
-a task ticked off in Notion is ticked off on the bar within seconds. The top-level pages are read every
-ten minutes. The app remembers
+a task ticked off in Notion is ticked off on the bar within seconds. On the top level, a search for what
+was edited last runs every 15 seconds, so a new page shows within half a minute; the whole top level is
+read again every ten minutes. The app remembers
 where you were and what every level of the way showed, so it opens there at once and going back up
 needs no waiting, even after a restart.
 

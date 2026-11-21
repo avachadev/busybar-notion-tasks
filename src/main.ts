@@ -19,8 +19,8 @@ import { type Config, configKey, readConfig, tokenTag, usable } from "./config.t
 import { clearElements, drawElements } from "./display.ts";
 import { NotionError } from "./notion.ts";
 import { type Element, listFrame, messageFrame, staleMark } from "./screen.ts";
-import { MovedError, NoDoneFieldError, type View, readView, setDone } from "./source.ts";
-import { type Database, type Entry, isTask } from "./tasks.ts";
+import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
+import { type Database, type Entry, isTask, mergeRoots } from "./tasks.ts";
 
 /** The name the app draws under; the device clears elements by this id. */
 const APP = manifest.id;
@@ -29,8 +29,13 @@ const APP = manifest.id;
 const TICK_MS = 3000;
 /** How often the open page or database is read again: a change made in Notion shows this soon. */
 const REFRESH_MS = 5000;
-/** The top-level pages take several requests to find, and rarely change. */
+/**
+ * The whole top level takes several requests to find, so it is read in full
+ * this seldom; in between, one search for what was edited last brings new
+ * pages in this often.
+ */
 const ROOT_REFRESH_MS = 10 * 60 * 1000;
+const ROOT_CHECK_MS = 15 * 1000;
 /** A read waits until the wheel and buttons have been still this long: parsing an answer stalls the list. */
 const QUIET_MS = 2000;
 /** First retry after a failure, doubled on each further one up to MAX_RETRY_MS. */
@@ -146,6 +151,8 @@ function main(): void {
   let reading = false;
   let readTimer: ReturnType<typeof setTimeout> | undefined;
   let lastInputAt = 0;
+  /** When the top level was last read in full. */
+  let rootReadAt = 0;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** A title shown on opening a page, or a note: over the list, for a moment. */
@@ -336,6 +343,7 @@ function main(): void {
     });
     key = nextKey;
     config = next;
+    rootReadAt = 0;
     owner = next.token ? tokenTag(next.token) : "";
     remembered.clear();
     databases.clear();
@@ -359,9 +367,14 @@ function main(): void {
     const depth = stack.length;
     const still = () => !stopped && readKey === key && stack.length === depth && current() === view;
     const startedAt = Date.now();
+    const quick = view.kind === "root" && loaded && startedAt - rootReadAt < ROOT_REFRESH_MS;
+    const base = entries;
     try {
       // A read of a view the user has left stops at its next request, so the new view's read is not kept waiting.
-      const result = await readView(token, view, scope, new Date(), databases, still);
+      const result = quick
+        ? { view, database: null, entries: mergeRoots(base, await readRecentRoots(token, still)) }
+        : await readView(token, view, scope, new Date(), databases, still);
+      if (view.kind === "root" && !quick && readKey === key) rootReadAt = startedAt;
       const now = Date.now();
       const fresh = result.entries.map((e) => {
         const t = ticks.get(e.id);
@@ -386,7 +399,7 @@ function main(): void {
       stale = false;
       problem = null;
       failures = 0;
-      nextReadAt = now + (view.kind === "root" ? ROOT_REFRESH_MS : REFRESH_MS);
+      nextReadAt = now + (view.kind === "root" ? ROOT_CHECK_MS : REFRESH_MS);
       keep(result.view, { entries, database, selected });
       persist();
     } catch (err) {

@@ -52,9 +52,9 @@ export const IMAGES = {
   checkboxIdle: "images/checkbox_idle.png",
 };
 
-/** Text of a ticked task; an open one is white at 40%. */
-export const TEXT_DONE = "#FFFFFFFF";
-export const TEXT_IDLE = "#FFFFFF66";
+/** Text of an open task, a page and a database is white; a ticked task's fades to 40%. */
+export const TEXT_DONE = "#FFFFFF66";
+export const TEXT_IDLE = "#FFFFFFFF";
 /** The mark that stands in for the checkbox on a page or a database: the idle checkbox's grey. */
 export const MARK_COLOR = "#5F5E58";
 

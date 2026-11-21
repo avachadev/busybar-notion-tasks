@@ -13,8 +13,10 @@ import {
   queryBody,
   queryPath,
   readSchema,
+  byTitle,
   openFirst,
   pickRoots,
+  rootsInSearch,
   setDoneCall,
   tasksFromQuery,
   walkedBlocks,
@@ -115,18 +117,27 @@ async function readRoot(token: string, alive: Alive): Promise<Entry[]> {
     if (cursor) body.start_cursor = cursor;
     check(alive);
     const response = await call(token, "POST", "search", body);
-    for (const source of list(response.results)) {
-      const parent = (source.parent ?? {}) as Json;
-      const dbParent = (source.database_parent ?? {}) as Json;
-      const id = typeof parent.database_id === "string" ? parent.database_id : "";
-      if (id && dbParent.type === "workspace" && !roots.some((e) => e.id === id)) {
-        roots.push({ kind: "database", id, title: plainText(source.title) || "Untitled" });
-      }
-    }
+    for (const db of rootsInSearch(response)) if (!roots.some((e) => e.id === db.id)) roots.push(db);
     if (response.has_more !== true || typeof response.next_cursor !== "string") break;
     cursor = response.next_cursor;
   }
-  return roots.sort((a, b) => (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
+  return byTitle(roots);
+}
+
+/** How many of the latest edited pages and databases a quick check of the top level looks at. */
+const RECENT = 10;
+
+/**
+ * A quick check of the top level between full reads: one search for what was
+ * edited last, pages and databases together. New top-level ones show at once.
+ */
+export async function readRecentRoots(token: string, alive: Alive): Promise<Entry[]> {
+  check(alive);
+  const response = await call(token, "POST", "search", {
+    sort: { timestamp: "last_edited_time", direction: "descending" },
+    page_size: RECENT,
+  });
+  return rootsInSearch(response);
 }
 
 /**

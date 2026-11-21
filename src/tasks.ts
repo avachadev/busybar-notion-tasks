@@ -316,6 +316,37 @@ export function pickRoots(found: readonly Found[], searchedAll: boolean): Entry[
   return roots;
 }
 
+/** Top-level pages and databases among recent search results, pages and data sources mixed. */
+export function rootsInSearch(response: Json): Entry[] {
+  const out: Entry[] = [];
+  for (const item of list(response.results)) {
+    const o = record(item);
+    if (o.in_trash === true) continue;
+    if (o.object === "page" && record(o.parent).type === "workspace") {
+      out.push({ kind: "page", id: str(o.id), title: pageTitle(o) || "Untitled" });
+    } else if (o.object === "data_source" && record(o.database_parent).type === "workspace") {
+      const id = str(record(o.parent).database_id);
+      if (id) out.push({ kind: "database", id, title: plainText(o.title) || "Untitled" });
+    }
+  }
+  return out;
+}
+
+/** Sorted by title: the sidebar's own order is not in the API. */
+export function byTitle(entries: Entry[]): Entry[] {
+  return entries.sort((a, b) => (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
+}
+
+/** The top level with what a quick check found: new entries added, renamed ones renamed. */
+export function mergeRoots(roots: readonly Entry[], found: readonly Entry[]): Entry[] {
+  const out = roots.map((e) => {
+    const f = found.find((x) => x.id === e.id);
+    return f && f.title !== e.title ? { ...e, title: f.title } : e;
+  });
+  for (const f of found) if (!out.some((e) => e.id === f.id)) out.push(f);
+  return byTitle(out);
+}
+
 /**
  * The call that ticks a task off, or back on when `done` is false. A to-do
  * read from markdown needs its block id, found by `source.ts`.

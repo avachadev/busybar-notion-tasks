@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { foundInSearch, pickRoots, localDate, localDayStart, openFirst, plainText, queryBody, queryPath, readSchema, setDoneCall, tasksFromQuery } from "../src/tasks.ts";
+import { foundInSearch, mergeRoots, rootsInSearch, pickRoots, localDate, localDayStart, openFirst, plainText, queryBody, queryPath, readSchema, setDoneCall, tasksFromQuery } from "../src/tasks.ts";
 
 const rt = (s: string) => [{ type: "text", plain_text: s }];
 
@@ -214,4 +214,19 @@ test("open rows come before closed ones", () => {
 
 test("today is the local date", () => {
   assert.equal(localDate(new Date(2026, 0, 5, 23, 59)), "2026-01-05");
+});
+
+test("a quick check of the top level adds new pages and databases and renames the renamed", () => {
+  const found = rootsInSearch({
+    results: [
+      searchPage("new", { type: "workspace", workspace: true }, "Inbox"),
+      searchPage("deep", { type: "page_id", page_id: "x" }, "Deep"),
+      { object: "data_source", title: rt("People"), parent: { type: "database_id", database_id: "db" }, database_parent: { type: "workspace", workspace: true } },
+      { object: "data_source", title: rt("Inline"), parent: { type: "database_id", database_id: "db2" }, database_parent: { type: "page_id", page_id: "p" } },
+      searchPage("a", { type: "workspace", workspace: true }, "Archive 2"),
+    ],
+  });
+  assert.deepEqual(found.map((e) => e.id), ["new", "db", "a"]);
+  const roots = [{ kind: "page" as const, id: "a", title: "Archive" }, { kind: "page" as const, id: "z", title: "Zoo" }];
+  assert.deepEqual(mergeRoots(roots, found).map((e) => e.title), ["Archive 2", "Inbox", "People", "Zoo"]);
 });

@@ -116,7 +116,7 @@ const SLOTS = [-1, 0, 1];
 /**
  * The list: the focused entry in the middle, the ones around it cut by the
  * screen's edges. A ticked task has the highlighted row, the blue checkbox and
- * white text; an open one the dark row, an empty checkbox and dimmed text.
+ * faded text; an open one the dark row, an empty checkbox and white text.
  * Pages and databases have the dark row and a mark instead of a checkbox. Only
  * the focused line scrolls when it is too long; the others run off the edge.
  */
