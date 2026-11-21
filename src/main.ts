@@ -16,7 +16,7 @@
 import manifest from "./appmeta/manifest.json";
 import { type Level, load, save } from "./cache.ts";
 import { type Config, configKey, readConfig, tokenTag, usable } from "./config.ts";
-import { clearElements, drawElements } from "./display.ts";
+import { clearAll, drawElements, prepare } from "./display.ts";
 import { focusable, settle, step } from "./focus.ts";
 import { shownEntries } from "./markdown.ts";
 import { NotionError } from "./notion.ts";
@@ -29,6 +29,12 @@ const APP = manifest.id;
 
 /** Settings saved while the app runs do not restart it, so they are read again this often. */
 const TICK_MS = 3000;
+/**
+ * Reading the settings and saving the place cost the bar file work (measured in
+ * `log trace`: about 200 ms for the settings), and a draw that meets them waits.
+ * Neither is done until the wheel and the buttons have been still this long.
+ */
+const IDLE_MS = 5000;
 /** How often the open page or database is read again: a change made in Notion shows this soon. */
 const REFRESH_MS = 5000;
 /**
@@ -173,8 +179,17 @@ function main(): void {
     }
     return set;
   };
-  /** The lines of the view that show: none inside a closed toggle. `selected` counts in these. */
-  const shown = (): Entry[] => shownEntries(entries, openHere());
+  /** The lines of the view that show: none inside a closed toggle. `selected` counts in these. Worked out again only when they change. */
+  let shownFor: { entries: Entry[]; open: Set<string>; size: number; lines: Entry[]; any: boolean } | null = null;
+  const shownState = () => {
+    const open = openHere();
+    if (!shownFor || shownFor.entries !== entries || shownFor.open !== open || shownFor.size !== open.size) {
+      const lines = shownEntries(entries, open);
+      shownFor = { entries, open, size: open.size, lines, any: lines.some(focusable) };
+    }
+    return shownFor;
+  };
+  const shown = (): Entry[] => shownState().lines;
   /** The id of the focused line, kept for coming back to it. */
   const focused = (): string => shown()[selected]?.id ?? "";
   const databases = new Map<string, Database>();
@@ -194,36 +209,52 @@ function main(): void {
 
   // ---- Display -------------------------------------------------------------
 
-  /** What is on screen now, by element id, as last sent. */
-  let onScreen: Record<string, string> = {};
+  /** What is on screen now, by element id: the very objects last sent, as `screen.ts` remembers them. */
+  let onScreen: Record<string, Element> = {};
+  /** The ids the last frame had, in view: only these can leave it. */
+  let inView: string[] = [];
+  /** What is on screen is not known (a draw failed): the next frame starts from a cleared screen. */
+  let lost = false;
   let drawing = false;
   let dirty = false;
   /** The confetti playing now, if any: part of the frame until it has played. */
   let confetti: Element | null = null;
+  /** Below the screen: where an element no longer shown waits, until its id is used again. */
+  const OFF_SCREEN_Y = 64;
 
   /**
-   * Sends only what changed. The new elements go first and the old ones are
-   * cleared after: clearing first can leave the app with nothing on screen for
-   * a moment, and the bar then flashes its own "Loading" placeholder.
+   * Sends what changed, in one request. An element is unchanged when it is the
+   * same object as last time: `screen.ts` gives back the same object for the
+   * same inputs, so nothing is serialised to compare. An element the last
+   * frame had and this one does not is moved off screen in the same request,
+   * rather than deleted in a second one. Its id keeps its type, so it can come back.
    *
-   * If either call fails, what is on screen is no longer known, so the next
-   * frame is sent whole.
+   * If the draw fails, what is on screen is no longer known: the next frame
+   * clears the app's elements and is sent whole.
    */
   async function show(elements: Element[]): Promise<void> {
-    const next: Record<string, string> = {};
-    const changed = [];
-    for (const element of elements) {
-      const sent = JSON.stringify(element);
-      next[element.id] = sent;
-      if (onScreen[element.id] !== sent) changed.push(element);
+    if (lost) {
+      await clearAll(APP);
+      onScreen = {};
+      inView = [];
+      lost = false;
     }
-    const gone = Object.keys(onScreen).filter((id) => !(id in next));
+    const ids: Record<string, true> = {};
+    const changed: Element[] = [];
+    for (const element of elements) {
+      ids[element.id] = true;
+      if (onScreen[element.id] !== element) changed.push(element);
+    }
+    for (const id of inView) {
+      if (ids[id]) continue;
+      changed.push({ ...onScreen[id], y: OFF_SCREEN_Y } as Element);
+    }
     try {
       if (changed.length > 0) await drawElements(APP, changed);
-      if (gone.length > 0) await clearElements(APP, gone);
-      onScreen = next;
+      for (const element of changed) onScreen[element.id] = element;
+      inView = elements.map((e) => e.id);
     } catch (err) {
-      onScreen = {};
+      lost = true;
       throw err;
     }
   }
@@ -248,11 +279,10 @@ function main(): void {
       if (view.kind === "root") return messageFrame("No pages", "share pages with the connection");
       return messageFrame(title, "no tasks or pages");
     }
-    const lines = shown();
-    if (!lines.some(focusable)) return messageFrame(title, "no tasks or pages");
-    const done = new Set<string>();
-    for (const e of lines) if (isTask(e) && isDone(e)) done.add(e.id);
-    const list = listFrame(lines, selected, done, logo, openHere());
+    const state = shownState();
+    if (!state.any) return messageFrame(title, "no tasks or pages");
+    // Ticks are looked up for the lines on screen only, not the whole list.
+    const list = listFrame(state.lines, selected, (e: Entry) => isTask(e) && isDone(e), logo, openHere());
     if (stale) list.push(staleMark(logo));
     return list;
   }
@@ -286,8 +316,29 @@ function main(): void {
         if (dirty) {
           dirty = false;
           redraw();
+        } else if (readyTimer === undefined) {
+          readyTimer = setTimeout(getReady, 0);
         }
       });
+  }
+
+  /**
+   * Builds the frames one wheel step up and one down, and serialises their
+   * elements, while nothing else is going on: the next step then finds its
+   * lines made and costs only the request. Measured on the bar, a line seen
+   * for the first time took 60-120 ms to build.
+   */
+  let readyTimer: ReturnType<typeof setTimeout> | undefined;
+  function getReady(): void {
+    readyTimer = undefined;
+    if (stopped || drawing || dirty || banner || !loaded || !config) return;
+    const state = shownState();
+    if (!state.any) return;
+    for (const delta of [1, -1]) {
+      const next = step(state.lines, selected, delta);
+      if (next === selected) continue;
+      prepare(listFrame(state.lines, next, (e: Entry) => isTask(e) && isDone(e), config.logo === true, openHere()));
+    }
   }
 
   function showBanner(title: string, detail: string | null, ms: number): void {
@@ -328,8 +379,15 @@ function main(): void {
     }
   }
 
+  /** The place changed since it was saved: saved once the user is idle, or on leaving. */
+  let unsaved = false;
+  const persist = (): void => {
+    unsaved = true;
+  };
+
   /** Saves the path and what every step of it shows, so going up after a restart needs no read. */
-  function persist(): void {
+  function persistNow(): void {
+    unsaved = false;
     if (!loaded) return;
     const levels = stack.map((v, i) => (i === stack.length - 1 ? { entries, database, focus: focused() } : remembered.get(viewKey(v)) ?? null));
     save({ owner, home, stack, levels });
@@ -656,9 +714,9 @@ function main(): void {
   function quit(): void {
     if (stopped) return;
     flushPending();
-    persist();
+    persistNow();
     stopped = true;
-    for (const t of [timer, readTimer, confettiTimer]) if (t !== undefined) clearTimeout(t);
+    for (const t of [timer, readTimer, confettiTimer, readyTimer]) if (t !== undefined) clearTimeout(t);
     // Retries still waiting are given up; a request already out settles by itself.
     ticks.forEach((t) => {
       if (t.stage === "sending" && t.timer !== undefined) clearTimeout(t.timer);
@@ -680,7 +738,9 @@ function main(): void {
   // ---- Loop ----------------------------------------------------------------
 
   async function tick(): Promise<void> {
-    await refreshConfig();
+    const idle = Date.now() - lastInputAt >= IDLE_MS;
+    if (idle || config === null) await refreshConfig();
+    if (idle && unsaved) persistNow();
     maybeRead();
     redraw();
   }

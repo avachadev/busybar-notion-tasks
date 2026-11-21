@@ -6,7 +6,7 @@ import { fit, listFrame, messageFrame, placeLines } from "../src/screen.ts";
 import type { Entry } from "../src/tasks.ts";
 
 const todo = (id: string, title: string): Entry => ({ kind: "todo", id, title });
-type El = Record<string, unknown>;
+type El = Record<string, unknown> & { fill_colors: string[] };
 const byId = (els: unknown[]) => Object.fromEntries((els as El[]).map((e) => [e.id, e])) as Record<string, El>;
 
 test("text widths match the device", () => {
@@ -18,8 +18,9 @@ test("without the logo the list takes the whole screen", () => {
   const els = byId(listFrame([todo("a", "One"), todo("b", "Two"), todo("c", "Three")], 1, new Set()));
   assert.equal(els.icon, undefined);
   assert.equal(els.row1.x, 0);
-  assert.equal(els.row1.path, "images/row_idle_72.png");
-  assert.equal(els.box1.x, 1);
+  assert.equal(els.row1.type, "rectangle");
+  assert.equal(els.row1.width, 72);
+  assert.equal(els.mark1.x, 1);
   assert.equal(els.text1.x, 10);
   const msg = byId(messageFrame("All done", "for today"));
   assert.equal(msg.icon, undefined);
@@ -34,8 +35,8 @@ test("with the logo the focused row sits in the middle beside the icon, its neig
   assert.equal(els.row0.y, -7);
   assert.equal(els.row1.y, 3);
   assert.equal(els.row2.y, 13);
-  assert.equal(els.box1.y, 4);
-  assert.equal(els.box1.x, 11);
+  assert.equal(els.mark1.y, 4);
+  assert.equal(els.mark1.x, 11);
   assert.equal(els.text1.x, 20);
 });
 
@@ -47,10 +48,11 @@ test("the first entry has nothing above it", () => {
 
 test("a ticked task gets the highlighted row, the blue checkbox and faded text", () => {
   const els = byId(listFrame([todo("a", "One"), todo("b", "Two")], 0, new Set(["a"]), true));
-  assert.equal(els.row1.path, "images/row_done_62.png");
-  assert.equal(els.box1.path, "images/checkbox_done.png");
+  assert.equal(els.row1.fill_colors[0], "#1B2027FF");
+  assert.equal(els.row1.width, 62);
+  assert.match(String(els.mark1.data), /#2883DF/);
   assert.equal(els.text1.color, "#FFFFFF66");
-  assert.equal(els.row2.path, "images/row_idle_62.png");
+  assert.equal(els.row2.fill_colors[0], "#161616FF");
   assert.equal(els.text2.color, "#FFFFFFFF");
 });
 
@@ -61,18 +63,17 @@ test("only the focused line scrolls", () => {
   assert.equal(els.text2.scroll_rate, undefined);
 });
 
-test("only tasks have a plate; pages and databases a mark and a chevron, under ids of their own", () => {
-  // The bar rejects a draw that changes an element's type under the same id.
+test("only tasks have a plate; pages and databases a mark and a chevron", () => {
   const els = byId(listFrame(
     [{ kind: "page", id: "p", title: "\u041e\u043a\u0442\u044f\u0431\u0440\u044c" }, { kind: "database", id: "d", title: "Tasks" }],
     0,
     new Set(["p"]),
   ));
-  assert.equal(els.page1.type, "xpmbitmap");
-  assert.equal(els.database2.type, "xpmbitmap");
+  assert.equal(els.mark1.type, "xpmbitmap");
+  assert.equal(els.mark2.type, "xpmbitmap");
   assert.equal(els.chevron1.x, 68);
   assert.equal(els.row1, undefined);
-  assert.equal(els.box1, undefined);
+  assert.match(String(els.mark1.data), /####/);
   // The focused line scrolls short of the chevron.
   assert.equal(els.text1.x, 10);
 });
@@ -80,11 +81,11 @@ test("only tasks have a plate; pages and databases a mark and a chevron, under i
 test("a toggle shows its state and the count of open tasks in it", () => {
   const toggle: Entry = { kind: "toggle", id: "t", title: "Ideas", count: 3 };
   const closed = byId(listFrame([toggle], 0, new Set()));
-  assert.match(String(closed.toggle1.data), /  #    /);
+  assert.match(String(closed.mark1.data), /  #    /);
   assert.equal(closed.count1.text, "3");
   assert.equal(closed.row1, undefined);
   const open = byId(listFrame([toggle], 0, new Set(), false, new Set(["t"])));
-  assert.notEqual(open.toggle1.data, closed.toggle1.data);
+  assert.notEqual(open.mark1.data, closed.mark1.data);
   assert.equal(byId(listFrame([{ ...toggle, count: 0 }], 0, new Set())).count1, undefined);
 });
 
@@ -97,9 +98,9 @@ test("nesting moves a line 3 px right per level, up to three; a heading is faded
   assert.equal(els.text0.x, 1);
   assert.equal(els.text0.color, "#FFFFFF66");
   assert.equal(els.row1.x, 9);
-  assert.equal(els.row1.path, "images/row_idle_63.png");
-  assert.equal(els.box1.x, 10);
-  assert.equal(els.page2.x, 4);
+  assert.equal(els.row1.width, 63);
+  assert.equal(els.mark1.x, 10);
+  assert.equal(els.mark2.x, 4);
 });
 
 test("lines that are not focused are cut to their room", () => {
@@ -146,9 +147,20 @@ test("lines without a plate go grey away from the focus, as in the APPS menu", (
   const els = byId(listFrame([page("a"), page("b"), todo("c", "C")], 1, new Set()));
   assert.equal(els.text1.color, "#FFFFFFFF");
   assert.equal(els.text0.color, "#FFFFFF66");
-  assert.match(String(els.page0.data), /#5F5E58/);
+  assert.match(String(els.mark0.data), /#5F5E58/);
   assert.match(String(els.chevron0.data), /#5F5E58/);
-  assert.match(String(els.page1.data), /#8C8B85/);
+  assert.match(String(els.mark1.data), /#8C8B85/);
   // A task keeps its look wherever it is.
   assert.equal(els.text2.color, "#FFFFFFFF");
+});
+
+test("the same inputs give back the same element, so a frame is compared without serialising it", () => {
+  const list = [todo("a", "One"), todo("b", "Two")];
+  const first = listFrame(list, 0, new Set());
+  const again = listFrame(list, 0, new Set());
+  assert.equal(first.length, again.length);
+  first.forEach((e, i) => assert.equal(e, again[i]));
+  const ticked = byId(listFrame(list, 0, new Set(["a"])));
+  assert.notEqual(ticked.row1, byId(first).row1);
+  assert.equal(ticked.text2, byId(first).text2);
 });

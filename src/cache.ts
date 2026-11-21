@@ -52,6 +52,8 @@ export function load(owner: string, home: string): Saved | null {
   }
 }
 
+let lastSaved = "";
+
 export function save(saved: Saved): void {
   try {
     const levels = saved.levels.map((l) => (l && l.entries.length > MAX_SAVED_ENTRIES
@@ -59,7 +61,11 @@ export function save(saved: Saved): void {
       : l));
     const raw = JSON.stringify({ ...saved, levels });
     const store = storage();
-    if (store && store.getItem(KEY) !== raw) store.setItem(KEY, raw);
+    // Compared with what this run saved last, not read back: reading is file work too.
+    if (store && raw !== lastSaved) {
+      store.setItem(KEY, raw);
+      lastSaved = raw;
+    }
   } catch {
     // A full or missing store only costs the instant start.
   }

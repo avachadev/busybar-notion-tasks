@@ -46,11 +46,9 @@ export const CHECKBOX_INSET_Y = 1;
 export const TEXT_INSET_X = 10;
 export const TEXT_INSET_Y = 0;
 
-/** Images from the design, packaged under src/images. */
+/** The logo, packaged under src/images: drawn once, so a file is fine. */
 export const IMAGES = {
   icon: "images/notion_icon.png",
-  checkboxDone: "images/checkbox_done.png",
-  checkboxIdle: "images/checkbox_idle.png",
 };
 
 /** Each level of nesting moves a line this far right; deeper than MAX_DEPTH stays there. */
@@ -58,13 +56,26 @@ export const INDENT = 3;
 export const MAX_DEPTH = 3;
 
 /**
- * A task's plate, from the screen's right edge back to where the line starts:
- * 72 px less the logo's 10 and the indent. Every width is its own PNG, cut
- * from the flat middle of the 72 px one.
+ * A task's plate, from where the line starts to the screen's right edge: a
+ * rectangle, not a picture. The bar reads a picture's file on every draw
+ * (measured: three plates 56 ms as PNGs, 19 ms as rectangles, spikes to 310 ms);
+ * a rectangle with a 1 px border and radius 2 matches the design's PNG to a few
+ * levels in the corners.
  */
-export function rowImage(done: boolean, width: number): string {
-  return `images/row_${done ? "done" : "idle"}_${width}.png`;
-}
+export const PLATE = {
+  idle: { fill: "#161616FF", border: "#202020FF" },
+  done: { fill: "#1B2027FF", border: "#20262FFF" },
+  radius: 2,
+};
+
+/** The checkboxes from the design, pixel for pixel, as XPM: drawn from the request, no file. */
+export const CHECKBOX_XPM = {
+  idle: "! XPM2\n7 7 10 1\na c #60605A\nb c #5F5F59\nc c #5F5E58\nd c #2A2927\ne c #000000\nf c #2A2A26\ng c #5F5E59\nh c #292927\n" +
+    "i c #5F5F58\nj c #605F57\nabcccca\ncdeeefg\nceeeeec\nceeeeec\nceeeeec\nbdeeehi\naicccja",
+  done: "! XPM2\n7 7 16 1\na c #2B85DF\nb c #2983DF\nc c #2883DF\nd c #2884DF\ne c #78B2EB\nf c #ACD0F3\ng c #FFFFFF\nh c #79B2EB\n" +
+    "i c #4393E3\nj c #C9E0F7\nk c #358BE1\nl c #A1C9F1\nm c #F2F7FD\nn c #2984DF\no c #86B9ED\np c #2784DF\n" +
+    "abcccda\ndccccef\nccccegh\nijieghc\nklmghcc\nncohccd\nadcccpa",
+};
 
 /** Text of an open task and of a focused page or database is white; a ticked task's fades to 40%. */
 export const TEXT_DONE = "#FFFFFF66";
@@ -117,8 +128,13 @@ const STANDINS: Record<string, string> = {
   "\u00ed": "i", "\u00c9": "E", "\u00d6": "O", "\u00dc": "U", "\u00c4": "A",
 };
 
+/** Characters the font surely has: printable ASCII but the backtick, and Russian. */
+const PLAIN = /^[\x20-\x5f\x61-\x7e\u0401\u0410-\u044f\u0451]*$/;
+
 /** `text` as the bar can draw it: missing characters replaced or left out. */
 export function printable(text: string): string {
+  // Most titles are plain: one test instead of a lookup per character, which costs on the bar.
+  if (PLAIN.test(text)) return text.replace(/\s+/g, " ").trim();
   let out = "";
   for (const ch of text) out += hasGlyph(ch.codePointAt(0) ?? 0) ? ch : (STANDINS[ch] ?? "");
   return out.replace(/\s+/g, " ").trim();

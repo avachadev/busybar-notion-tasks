@@ -8,35 +8,49 @@
 
 const DRAW_URL = "http://127.0.0.1/api/display/draw";
 
-async function send(method: "POST" | "DELETE", body: unknown): Promise<void> {
+async function send(method: "POST" | "DELETE", body: string): Promise<void> {
   const response = await fetch(DRAW_URL, {
     method,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body,
   });
   // Read the answer either way, so the request is done with before the next one.
   const text = await response.text();
   if (!response.ok) throw new Error(`${method} display: HTTP ${response.status} ${text}`);
 }
 
-export function drawElements(app: string, elements: readonly unknown[]): Promise<void> {
-  return send("POST", { application_name: app, priority: 50, elements });
+/**
+ * Each element's JSON, made once: most elements of a frame are the same objects
+ * as in the last one, and serialising on the bar is slow. Cleared when it grows.
+ */
+const json = new Map<object, string>();
+const MAX_JSON = 300;
+
+/** Serialises elements ahead of time, while the user is idle, so drawing them later is only the request. */
+export function prepare(elements: readonly object[]): void {
+  for (const element of elements) jsonOf(element);
 }
 
-/**
- * Clears elements by id. The bar refuses the whole request when one of the ids
- * is gone already, for instance after it dropped the app's elements by itself:
- * then each id is cleared on its own, and the missing ones are let go.
- */
-export async function clearElements(app: string, ids: readonly string[]): Promise<void> {
+function jsonOf(element: object): string {
+  let text = json.get(element);
+  if (text === undefined) {
+    if (json.size >= MAX_JSON) json.clear();
+    text = JSON.stringify(element);
+    json.set(element, text);
+  }
+  return text;
+}
+
+export function drawElements(app: string, elements: readonly object[]): Promise<void> {
+  return send("POST", `{"application_name":${JSON.stringify(app)},"priority":50,"elements":[${elements.map(jsonOf).join(",")}]}`);
+}
+
+/** Clears every element the app has on screen: to start over once what is there is no longer known. */
+export async function clearAll(app: string): Promise<void> {
   try {
-    await send("DELETE", { application_name: app, element_ids: ids });
+    await send("DELETE", JSON.stringify({ application_name: app }));
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
-    if (message.indexOf("not displaying anything") >= 0) return;
-    if (message.indexOf("non-existent") < 0 || ids.length < 2) throw err;
-    for (const id of ids) {
-      await send("DELETE", { application_name: app, element_ids: [id] }).catch(() => undefined);
-    }
+    if (message.indexOf("not displaying anything") < 0) throw err;
   }
 }
