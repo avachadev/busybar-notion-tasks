@@ -95,7 +95,7 @@ test("nesting moves a line 2 px right per level, up to three; a heading is faded
     { kind: "page", id: "p", title: "Notes", depth: 1 },
   ], 1, new Set()));
   assert.equal(els.text0.x, 1);
-  assert.equal(els.text0.color, "#FFFFFF80");
+  assert.equal(els.text0.color, "#FFFFFF66");
   assert.equal(els.row1.x, 6);
   assert.equal(els.row1.path, "images/row_idle_66.png");
   assert.equal(els.box1.x, 7);
@@ -139,4 +139,16 @@ test("lines stack by their height: a plate is 9 px, a line without one 7, 1 px a
   ]);
   // Mixed: a page under a task, 9 px.
   assert.deepEqual(placeLines([todo("a", "A"), page("b")], 0), [{ offset: 0, y: 3 }, { offset: 1, y: 12 }]);
+});
+
+test("lines without a plate go grey away from the focus, as in the APPS menu", () => {
+  const page = (id: string): Entry => ({ kind: "page", id, title: id });
+  const els = byId(listFrame([page("a"), page("b"), todo("c", "C")], 1, new Set()));
+  assert.equal(els.text1.color, "#FFFFFFFF");
+  assert.equal(els.text0.color, "#FFFFFF66");
+  assert.match(String(els.page0.data), /#5F5E58/);
+  assert.match(String(els.chevron0.data), /#5F5E58/);
+  assert.match(String(els.page1.data), /#8C8B85/);
+  // A task keeps its look wherever it is.
+  assert.equal(els.text2.color, "#FFFFFFFF");
 });

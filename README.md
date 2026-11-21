@@ -55,7 +55,10 @@ Either of these works.
 | Page | No plate; a sheet on the left, a chevron › on the right |
 | Database | No plate; a grid on the left, a chevron › on the right |
 | Toggle | No plate; ▸ closed, ▾ open, the number of open tasks inside on the right. Toggles start closed. |
-| Heading | Faded text, no mark; the focus passes over it |
+| Heading | Grey text, no mark; the focus passes over it |
+
+A page, a database or a toggle that is not focused is grey, marks included, as the neighbours in the
+bar's APPS menu are: it shows there is more without drawing the eye. Tasks keep their look.
 
 Lines stack by their height: a task's plate is 9 px, a line without one 7 px (its letters and 1 px
 above and below), 1 px apart, so a list of pages sits tighter than a list of tasks. Each level of

@@ -22,6 +22,7 @@ import {
   ICON_Y,
   IMAGES,
   MARK_COLOR,
+  MARK_EDGE,
   MESSAGE_COLOR,
   MESSAGE_DIM_COLOR,
   LINE_GAP,
@@ -31,7 +32,7 @@ import {
   SCREEN_W,
   STALE_COLOR,
   TEXT_DONE,
-  TEXT_HEADING,
+  TEXT_EDGE,
   TEXT_IDLE,
   TEXT_INSET_X,
   TEXT_INSET_Y,
@@ -61,7 +62,7 @@ function image(id: string, x: number, y: number, path: string, z: number): Eleme
   return { id, type: "image", display: "front", align: "top_left", x, y, path, z_index: z } as Element;
 }
 
-function mark(id: string, kind: string, x: number, y: number): Element {
+function mark(id: string, kind: string, x: number, y: number, color = MARK_COLOR): Element {
   const rows = MARKS[kind];
   return {
     id,
@@ -70,7 +71,7 @@ function mark(id: string, kind: string, x: number, y: number): Element {
     align: "top_left",
     x,
     y,
-    data: ["! XPM2", `${rows[0].length} ${rows.length} 2 1`, "  c none", `# c ${MARK_COLOR}`, ...rows].join("\n"),
+    data: ["! XPM2", `${rows[0].length} ${rows.length} 2 1`, "  c none", `# c ${color}`, ...rows].join("\n"),
     z_index: 1,
   };
 }
@@ -194,6 +195,9 @@ export function listFrame(
     const focused = offset === 0;
     const textX = x0 + TEXT_INSET_X;
     const markY = y + CHECKBOX_INSET_Y;
+    // Lines without a plate go grey away from the focus.
+    const ink = focused ? TEXT_IDLE : TEXT_EDGE;
+    const markColor = focused ? MARK_COLOR : MARK_EDGE;
     // Each kind of mark has its own id: the bar rejects a draw that changes an
     // element's type under the same id. A slot that changes kind is cleared once.
     if (hasPlate(entry)) {
@@ -202,19 +206,20 @@ export function listFrame(
       elements.push(image(`box${slot}`, x0 + CHECKBOX_INSET_X, markY, done ? IMAGES.checkboxDone : IMAGES.checkboxIdle, 1));
       elements.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, done ? TEXT_DONE : TEXT_IDLE, SCREEN_W - textX, focused));
     } else if (entry.kind === "page" || entry.kind === "database") {
-      elements.push(mark(`${entry.kind}${slot}`, entry.kind, x0 + CHECKBOX_INSET_X, markY));
-      elements.push(mark(`chevron${slot}`, "chevron", CHEVRON_X, y + CHEVRON_INSET_Y));
-      elements.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, TEXT_IDLE, CHEVRON_X - 2 - textX, focused));
+      elements.push(mark(`${entry.kind}${slot}`, entry.kind, x0 + CHECKBOX_INSET_X, markY, markColor));
+      elements.push(mark(`chevron${slot}`, "chevron", CHEVRON_X, y + CHEVRON_INSET_Y, markColor));
+      elements.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, ink, CHEVRON_X - 2 - textX, focused));
     } else if (entry.kind === "toggle") {
       const open = openToggles.has(entry.id);
-      elements.push(mark(`toggle${slot}`, open ? "toggleOpen" : "toggleClosed", x0 + CHECKBOX_INSET_X, markY));
+      elements.push(mark(`toggle${slot}`, open ? "toggleOpen" : "toggleClosed", x0 + CHECKBOX_INSET_X, markY, markColor));
       const count = String(entry.count ?? 0);
       const countX = SCREEN_W - 1 - textWidth(count);
-      if (entry.count) elements.push(text(`count${slot}`, countX, y + TEXT_INSET_Y, count, COUNT_COLOR, null));
+      if (entry.count) elements.push(text(`count${slot}`, countX, y + TEXT_INSET_Y, count, focused ? COUNT_COLOR : TEXT_EDGE, null));
       const room = (entry.count ? countX - 1 : SCREEN_W) - textX;
-      elements.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, TEXT_IDLE, room, focused));
+      elements.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, ink, room, focused));
     } else {
-      elements.push(line(`text${slot}`, x0 + 1, y + TEXT_INSET_Y, entry.title, TEXT_HEADING, SCREEN_W - x0 - 1, false));
+      // A heading is never focused: grey, as any line without a plate away from the focus.
+      elements.push(line(`text${slot}`, x0 + 1, y + TEXT_INSET_Y, entry.title, TEXT_EDGE, SCREEN_W - x0 - 1, false));
     }
   }
   return elements;

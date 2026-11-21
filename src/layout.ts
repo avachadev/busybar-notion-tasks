@@ -65,14 +65,20 @@ export function rowImage(done: boolean, width: number): string {
   return `images/row_${done ? "done" : "idle"}_${width}.png`;
 }
 
-/** Text of an open task, a page and a database is white; a ticked task's fades to 40%; a heading's to 50%. */
+/** Text of an open task and of a focused page or database is white; a ticked task's fades to 40%. */
 export const TEXT_DONE = "#FFFFFF66";
 export const TEXT_IDLE = "#FFFFFFFF";
-export const TEXT_HEADING = "#FFFFFF80";
 /** A toggle's count of open tasks. */
 export const COUNT_COLOR = "#FFFFFF80";
 /** The marks of what has no plate: pages, databases, toggles, and the chevron of what opens. */
 export const MARK_COLOR = "#8C8B85";
+/**
+ * A line without a plate that is not focused sticks out at the screen's edge
+ * in grey, as the APPS menu's neighbours do (#666666 there): it says there is
+ * more without drawing the eye.
+ */
+export const TEXT_EDGE = "#FFFFFF66";
+export const MARK_EDGE = "#5F5E58";
 /** The chevron at the right of a page or a database: 3x5, 1 px in from the screen's edge. */
 export const CHEVRON_X = SCREEN_W - 4;
 export const CHEVRON_INSET_Y = 2;
