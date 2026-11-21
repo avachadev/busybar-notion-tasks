@@ -62,7 +62,7 @@ bar's APPS menu are: it shows there is more without drawing the eye. Tasks keep 
 
 Lines stack by their height: a task's plate is 9 px, a line without one 7 px (its letters and 1 px
 above and below), 1 px apart, so a list of pages sits tighter than a list of tasks. Each level of
-nesting moves a line 2 px right, up to three levels. An empty to-do is not shown; the
+nesting moves a line 3 px right, up to three levels. An empty to-do is not shown; the
 to-dos under it take its place. Plain paragraphs are not shown.
 
 A tick goes to Notion 1.5 seconds after the press; a second press within that time takes it back

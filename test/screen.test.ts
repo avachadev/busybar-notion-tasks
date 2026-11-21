@@ -20,7 +20,7 @@ test("without the logo the list takes the whole screen", () => {
   assert.equal(els.row1.x, 0);
   assert.equal(els.row1.path, "images/row_idle_72.png");
   assert.equal(els.box1.x, 1);
-  assert.equal(els.text1.x, 11);
+  assert.equal(els.text1.x, 10);
   const msg = byId(messageFrame("All done", "for today"));
   assert.equal(msg.icon, undefined);
   assert.equal(msg.m_title.x, 36);
@@ -36,7 +36,7 @@ test("with the logo the focused row sits in the middle beside the icon, its neig
   assert.equal(els.row2.y, 13);
   assert.equal(els.box1.y, 4);
   assert.equal(els.box1.x, 11);
-  assert.equal(els.text1.x, 21);
+  assert.equal(els.text1.x, 20);
 });
 
 test("the first entry has nothing above it", () => {
@@ -74,7 +74,7 @@ test("only tasks have a plate; pages and databases a mark and a chevron, under i
   assert.equal(els.row1, undefined);
   assert.equal(els.box1, undefined);
   // The focused line scrolls short of the chevron.
-  assert.equal(els.text1.x, 11);
+  assert.equal(els.text1.x, 10);
 });
 
 test("a toggle shows its state and the count of open tasks in it", () => {
@@ -88,7 +88,7 @@ test("a toggle shows its state and the count of open tasks in it", () => {
   assert.equal(byId(listFrame([{ ...toggle, count: 0 }], 0, new Set())).count1, undefined);
 });
 
-test("nesting moves a line 2 px right per level, up to three; a heading is faded text alone", () => {
+test("nesting moves a line 3 px right per level, up to three; a heading is faded text alone", () => {
   const els = byId(listFrame([
     { kind: "heading", id: "h", title: "Week", depth: 0 },
     { kind: "todo", id: "a", title: "Deep", depth: 5 },
@@ -96,16 +96,16 @@ test("nesting moves a line 2 px right per level, up to three; a heading is faded
   ], 1, new Set()));
   assert.equal(els.text0.x, 1);
   assert.equal(els.text0.color, "#FFFFFF66");
-  assert.equal(els.row1.x, 6);
-  assert.equal(els.row1.path, "images/row_idle_66.png");
-  assert.equal(els.box1.x, 7);
-  assert.equal(els.page2.x, 3);
+  assert.equal(els.row1.x, 9);
+  assert.equal(els.row1.path, "images/row_idle_63.png");
+  assert.equal(els.box1.x, 10);
+  assert.equal(els.page2.x, 4);
 });
 
 test("lines that are not focused are cut to their room", () => {
   const long = "A page with a title much too long for the bar";
   const els = byId(listFrame([todo("a", "One"), { kind: "page", id: "p", title: long }], 0, new Set()));
-  assert.ok(textWidth(String(els.text2.text)) <= 68 - 2 - 11);
+  assert.ok(textWidth(String(els.text2.text)) <= 68 - 2 - 10);
   assert.equal(fit("Short", 60), "Short");
 });
 

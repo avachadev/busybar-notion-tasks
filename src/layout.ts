@@ -39,10 +39,11 @@ export const CHECKBOX_INSET_X = 1;
 export const CHECKBOX_INSET_Y = 1;
 
 /**
- * `small` text anchored at y puts its ink on rows y+2..y+6 (measured on the
- * device), so text anchored at the row's top sits in the middle of the 9 px row.
+ * Text starts 2 px right of the 7 px checkbox or mark. `small` text anchored
+ * at y puts its ink on rows y+2..y+6 (measured on the device), so text anchored
+ * at the row's top sits in the middle of the 9 px row.
  */
-export const TEXT_INSET_X = 11;
+export const TEXT_INSET_X = 10;
 export const TEXT_INSET_Y = 0;
 
 /** Images from the design, packaged under src/images. */
@@ -53,7 +54,7 @@ export const IMAGES = {
 };
 
 /** Each level of nesting moves a line this far right; deeper than MAX_DEPTH stays there. */
-export const INDENT = 2;
+export const INDENT = 3;
 export const MAX_DEPTH = 3;
 
 /**
