@@ -22,9 +22,16 @@ registerFontMaps(small);
 export const ICON_X = 0;
 export const ICON_Y = 4;
 
-export const ROW_H = 9;
-export const ROW_STEP = 10;
-/** Top of the focused row. */
+/**
+ * Lines stack by their height, not on a fixed step: a task's plate is 9 px; a
+ * line without one (a page, a database, a toggle, a heading) is its 5 px of
+ * letters and 1 px above and below, 7 px. Lines are 1 px apart, and the
+ * focused one sits in the middle of the screen, rows 3..11 or 4..10.
+ */
+export const PLATE_H = 9;
+export const LINE_H = 7;
+export const LINE_GAP = 1;
+/** Where the focused line's text is anchored, whatever its kind. */
 export const FOCUS_Y = 3;
 
 /** The checkbox is 7x7, 1 px in from the row's left and top edges. */

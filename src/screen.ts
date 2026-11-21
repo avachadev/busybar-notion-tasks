@@ -24,7 +24,9 @@ import {
   MARK_COLOR,
   MESSAGE_COLOR,
   MESSAGE_DIM_COLOR,
-  ROW_STEP,
+  LINE_GAP,
+  LINE_H,
+  PLATE_H,
   SCREEN_H,
   SCREEN_W,
   STALE_COLOR,
@@ -131,8 +133,35 @@ export function fit(value: string, width: number): string {
 /** Ids of the tasks that are ticked off, in Notion or on their way there. */
 export type Done = ReadonlySet<string>;
 
-/** Which entries are on screen: the focused one and its neighbours, as offsets from it. */
-const SLOTS = [-1, 0, 1];
+const hasPlate = (e: Entry) => e.kind === "todo" || e.kind === "row";
+/** A line's height, and where its box starts below the text's anchor. */
+const boxOf = (e: Entry) => (hasPlate(e) ? { h: PLATE_H, inset: 0 } : { h: LINE_H, inset: 1 });
+
+/**
+ * Which entries are on screen and where: the focused one with its text at
+ * FOCUS_Y, then outwards, each line LINE_GAP from the next, while any of it is
+ * on screen. Returns each line's offset from the focused one and its anchor.
+ */
+export function placeLines(entries: readonly Entry[], selected: number): { offset: number; y: number }[] {
+  const out: { offset: number; y: number }[] = [];
+  const focus = entries[selected];
+  if (!focus) return out;
+  out.push({ offset: 0, y: FOCUS_Y });
+  let top = FOCUS_Y + boxOf(focus).inset;
+  for (let i = selected - 1; i >= 0 && top - 1 - LINE_GAP >= 0; i -= 1) {
+    const b = boxOf(entries[i]);
+    top = top - LINE_GAP - b.h;
+    out.push({ offset: i - selected, y: top - b.inset });
+  }
+  let bottom = FOCUS_Y + boxOf(focus).inset + boxOf(focus).h - 1;
+  for (let i = selected + 1; i < entries.length && bottom + 1 + LINE_GAP <= SCREEN_H - 1; i += 1) {
+    const b = boxOf(entries[i]);
+    const boxTop = bottom + 1 + LINE_GAP;
+    out.push({ offset: i - selected, y: boxTop - b.inset });
+    bottom = boxTop + b.h - 1;
+  }
+  return out;
+}
 
 /**
  * The list: the focused entry in the middle, the ones around it cut by the
@@ -157,19 +186,17 @@ export function listFrame(
     return text(id, x, y, focused ? value : fit(value, room), color, focused ? room : null);
   };
   const elements: Element[] = logo ? [icon()] : [];
-  for (const offset of SLOTS) {
-    const i = selected + offset;
-    if (i < 0 || i >= entries.length) continue;
-    const entry = entries[i];
+  for (const { offset, y } of placeLines(entries, selected)) {
+    const entry = entries[selected + offset];
+    // Ids by place: 1 is the focused line, 0 and 2 its neighbours, and so on outwards.
     const slot = offset + 1;
-    const y = FOCUS_Y + offset * ROW_STEP;
     const x0 = listX(logo) + INDENT * Math.min(entry.depth ?? 0, MAX_DEPTH);
     const focused = offset === 0;
     const textX = x0 + TEXT_INSET_X;
     const markY = y + CHECKBOX_INSET_Y;
     // Each kind of mark has its own id: the bar rejects a draw that changes an
     // element's type under the same id. A slot that changes kind is cleared once.
-    if (entry.kind === "todo" || entry.kind === "row") {
+    if (hasPlate(entry)) {
       const done = doneIds.has(entry.id);
       elements.push(image(`row${slot}`, x0, y, rowImage(done, SCREEN_W - x0), 0));
       elements.push(image(`box${slot}`, x0 + CHECKBOX_INSET_X, markY, done ? IMAGES.checkboxDone : IMAGES.checkboxIdle, 1));

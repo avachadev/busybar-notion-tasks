@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { printable, textWidth } from "../src/layout.ts";
-import { fit, listFrame, messageFrame } from "../src/screen.ts";
+import { fit, listFrame, messageFrame, placeLines } from "../src/screen.ts";
 import type { Entry } from "../src/tasks.ts";
 
 const todo = (id: string, title: string): Entry => ({ kind: "todo", id, title });
@@ -125,4 +125,18 @@ test("characters the bar's font lacks are replaced or left out", () => {
   assert.equal(printable("\u0414\u0435\u043b\u0430 \u2116 1"), "\u0414\u0435\u043b\u0430 No 1");
   assert.equal(printable("\ud83d\ude80 Launch \u2705"), "Launch");
   assert.equal(printable("Caf\u00e9 \u2014 \u00ab\u0451\u00bb"), "Cafe \u2014 \u00ab\u0451\u00bb");
+});
+
+test("lines stack by their height: a plate is 9 px, a line without one 7, 1 px apart", () => {
+  const page = (id: string): Entry => ({ kind: "page", id, title: id });
+  // Tasks: as before, 10 px apart.
+  assert.deepEqual(placeLines([todo("a", "A"), todo("b", "B"), todo("c", "C")], 1), [
+    { offset: 0, y: 3 }, { offset: -1, y: -7 }, { offset: 1, y: 13 },
+  ]);
+  // Pages only: 8 px apart, so more of the neighbours shows.
+  assert.deepEqual(placeLines([page("a"), page("b"), page("c")], 1), [
+    { offset: 0, y: 3 }, { offset: -1, y: -5 }, { offset: 1, y: 11 },
+  ]);
+  // Mixed: a page under a task, 9 px.
+  assert.deepEqual(placeLines([todo("a", "A"), page("b")], 0), [{ offset: 0, y: 3 }, { offset: 1, y: 12 }]);
 });
