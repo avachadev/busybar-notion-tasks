@@ -161,28 +161,24 @@ function doneFilters(field: DoneField, done: boolean): Json[] {
 }
 
 /**
- * The query body: open rows due by today unless the scope is everything, and
- * rows closed since midnight, so a task ticked off today can be ticked back on.
- * Notion has no "closed at", so the last edit stands in for it.
+ * The query body: open rows, then rows closed since midnight, so a task ticked
+ * off today can be ticked back on. Notion has no "closed at", so the last edit
+ * stands in for it. With the "today" scope a row shows when it is due by today
+ * or has no date. A filter nests two levels at most, so each case is its own branch.
  */
 export function queryBody(schema: Schema, scope: Scope, today: string, dayStart: string): Json {
-  const due: Json[] = scope === "today" && schema.dateId !== null
-    ? [{ property: schema.dateId, date: { on_or_before: today } }]
-    : [];
-  const open = doneFilters(schema.done, false).concat(due);
-  const closed = doneFilters(schema.done, true).concat(due, [
-    { timestamp: "last_edited_time", last_edited_time: { on_or_after: dayStart } },
-  ]);
+  const when: Json[][] = scope === "today" && schema.dateId !== null
+    ? [[{ property: schema.dateId, date: { on_or_before: today } }], [{ property: schema.dateId, date: { is_empty: true } }]]
+    : [[]];
+  const editedToday: Json = { timestamp: "last_edited_time", last_edited_time: { on_or_after: dayStart } };
+  const branches: Json[] = [];
+  for (const due of when) branches.push({ and: doneFilters(schema.done, false).concat(due) });
+  for (const due of when) branches.push({ and: doneFilters(schema.done, true).concat(due, [editedToday]) });
 
-  const body: Json = { filter: { or: [{ and: open }, { and: closed }] }, page_size: PAGE_SIZE };
-  if (schema.dateId !== null) {
-    body.sorts = [
-      { property: schema.dateId, direction: "ascending" },
-      { timestamp: "created_time", direction: "ascending" },
-    ];
-  } else {
-    body.sorts = [{ timestamp: "created_time", direction: "ascending" }];
-  }
+  const body: Json = { filter: { or: branches }, page_size: PAGE_SIZE };
+  body.sorts = schema.dateId !== null
+    ? [{ property: schema.dateId, direction: "ascending" }, { timestamp: "created_time", direction: "ascending" }]
+    : [{ timestamp: "created_time", direction: "ascending" }];
   return body;
 }
 

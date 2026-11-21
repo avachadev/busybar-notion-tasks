@@ -14,7 +14,7 @@ your token and your tasks go only between the bar and `api.notion.com`.
 
 ## Install
 
-You need a BUSY Bar on firmware **1.3.1 or newer**, connected to Wi-Fi, and a Notion account.
+You need a BUSY Bar on firmware **1.4.1 or newer**, connected to Wi-Fi, and a Notion account.
 
 1. Download `app.avachadev.notiontasks.tgz` from the
    [latest release](https://github.com/avachadev/busybar-notion-tasks/releases/latest).
@@ -45,7 +45,6 @@ Either of these works.
 | Wheel | Moves through the entries. The focused one sits in the middle of the screen. |
 | **OK** or **Start** | Opens a page or a database. On a task, ticks it off or back on. |
 | **Back** | Goes up a level. On the top level, leaves the app. |
-| Long **Back** | Leaves the app from anywhere. |
 
 | Entry | Looks like |
 | --- | --- |
@@ -55,16 +54,19 @@ Either of these works.
 | Ticked task | A blue checkbox, highlighted row, white text |
 
 A tick goes to Notion 1.5 seconds after the press; a second press within that time takes it back
-without any request. Leaving the page sends the ticks made on it right away.
+without any request. Leaving the page sends the ticks made on it right away. A tick that does not get
+through is sent twice more; if it still fails, the bar says `Not saved` and the task shows what Notion has.
 
-The open page is read again every minute, and the top-level pages every ten minutes. The app remembers
+The open page or database is read again every 5 seconds, once the wheel has been still for 2 seconds:
+a task ticked off in Notion is ticked off on the bar within seconds. The top-level pages are read every
+ten minutes. The app remembers
 where you were and what every level of the way showed, so it opens there at once and going back up
 needs no waiting, even after a restart.
 
 ### Databases
 
-A database shows its open rows that are due today or earlier, soonest first, then the rows ticked off
-today, so a task closed by mistake can be reopened. The app finds the properties by itself:
+A database shows its open rows that are due today or earlier or have no date, soonest first, then the
+rows ticked off today, so a task closed by mistake can be reopened. The app finds the properties by itself:
 
 - **Done**: a checkbox named like *Done*, *Complete* or *Finished* (or its Russian equivalent); else a
   status property, where any option in its *Complete* group means done; else any checkbox.
@@ -80,7 +82,7 @@ so "ticked off today" means a done row edited since midnight by the bar's clock.
 | --- | --- |
 | **Notion token** | The personal access token or the connection's token. |
 | **Start page** | Optional. Leave it empty to start from your top-level pages, or paste a link to a page or a database (**••• → Copy link** in Notion) to start there. |
-| **Show** | For databases with a date: *Due today and overdue* (the default) or *All open tasks*. Pages always show every to-do. |
+| **Show** | For databases with a date: *Due today, overdue or undated* (the default) or *All open tasks*. Pages always show every to-do. |
 
 Changes apply within a few seconds, without restarting the app.
 
@@ -94,12 +96,17 @@ Changes apply within a few seconds, without restarting the app.
 | `No access` | The page or database is not shared with the token, or it was deleted. |
 | `No checkbox` | The database has no checkbox or status property to tick. |
 | `Offline` | Notion could not be reached. The app keeps trying, waiting longer each time. |
+| `Notion busy` | Too many requests: the app waits as long as Notion asks. |
+| `Notion down` | Notion answers with a server error. The app keeps trying. |
+| `Notion error` | Notion refused the request; the second line is its error code. |
+| `Not saved` | A tick did not reach Notion after three tries. |
+| Orange dot above the icon | The list is from the last good read; the latest one failed. |
 | `All done` | The database has nothing left for today. |
 
 ## Security
 
-**Anyone who can open the bar's web interface can read the token**: the bar's settings have no hidden
-fields, and its HTTP API serves them to the local network. To keep it to yourself:
+**Anyone who can reach the bar's HTTP API can read the token**: the web interface hides it, but the
+API serves the settings to the local network as they are. To keep it to yourself:
 
 - set a password on the bar's HTTP API (**Network → HTTP API** in the web interface);
 - prefer an internal connection shared with just the pages you need, over a personal access token;
@@ -114,8 +121,10 @@ path you were on and the titles shown there.
   100 pages. In a large workspace some may be missing; set a **Start page** then.
 - A page shows its first 200 blocks. To-dos nested inside toggles or columns are not shown.
 - A database shows up to 20 rows.
-- Each request to Notion takes the bar a few seconds. Scrolling stays quick, but may stutter for a
-  moment while a fresh answer is being read.
+- Each request to Notion takes the bar 1.3-1.7 seconds. Reads wait while the wheel turns, so scrolling
+  stays quick.
+- Notion's webhooks need a public server, and the bar takes no incoming connections, so the bar asks
+  Notion itself every few seconds.
 
 ## How the screen is drawn
 
@@ -158,7 +167,7 @@ Over Wi-Fi add `-- --addr <bar-ip>` (and `--password <password>` if the bar has 
 | `src/tasks.ts` | Turns Notion's answers into entries; finds a database's properties; builds queries. |
 | `src/notion.ts` | The Notion API client: one `fetch` per call, errors as `NotionError`. |
 | `src/link.ts` | Turns a pasted Notion link into an id. |
-| `src/config.ts` | Reads the settings. |
+| `src/config.ts` | Reads the settings through the bar's local HTTP API. |
 | `src/cache.ts` | Keeps the path and what it showed in `localStorage`. |
 | `src/screen.ts`, `src/layout.ts` | Display elements and geometry. |
 | `src/display.ts` | Draws through the bar's local HTTP API. |

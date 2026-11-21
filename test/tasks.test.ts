@@ -67,14 +67,19 @@ test("nothing to tick means no schema", () => {
 const START = "2026-11-06T00:00:00+03:00";
 const editedToday = { timestamp: "last_edited_time", last_edited_time: { on_or_after: START } };
 
-test("the query asks for open tasks due by today and the ones closed today, soonest first", () => {
+test("the query asks for open tasks due by today or undated and the ones closed today, soonest first", () => {
   const schema = readSchema(checkboxDb)!;
   const due = { property: "d%40e", date: { on_or_before: "2026-11-06" } };
+  const undated = { property: "d%40e", date: { is_empty: true } };
+  const open = { property: "a%3Ab", checkbox: { equals: false } };
+  const closed = { property: "a%3Ab", checkbox: { equals: true } };
   assert.deepEqual(queryBody(schema, "today", "2026-11-06", START), {
     filter: {
       or: [
-        { and: [{ property: "a%3Ab", checkbox: { equals: false } }, due] },
-        { and: [{ property: "a%3Ab", checkbox: { equals: true } }, due, editedToday] },
+        { and: [open, due] },
+        { and: [open, undated] },
+        { and: [closed, due, editedToday] },
+        { and: [closed, undated, editedToday] },
       ],
     },
     page_size: 20,

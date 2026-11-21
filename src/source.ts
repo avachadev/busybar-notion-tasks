@@ -149,7 +149,14 @@ export async function readView(
   }
   check(alive);
   const body = queryBody(database.schema, scope, localDate(now), localDayStart(now));
-  const response = await call(token, "POST", queryPath(database.dataSourceId, database.schema), body);
+  let response: Json;
+  try {
+    response = await call(token, "POST", queryPath(database.dataSourceId, database.schema), body);
+  } catch (err) {
+    // The database's properties changed or it moved: look it up again next time.
+    if (err instanceof NotionError && (err.status === 400 || err.status === 404)) databases.delete(resolved.id);
+    throw err;
+  }
   return { entries: openFirst(tasksFromQuery(response, database.schema)), view: resolved, database };
 }
 

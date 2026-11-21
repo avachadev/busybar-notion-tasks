@@ -1,12 +1,13 @@
 {
   "format_version": 1,
-  "version": 1,
+  "version": 2,
   "fields": {
     "token": {
       "type": "string",
       "label": "Notion token",
-      "description": "A Notion personal access token, or an internal connection's API token shared with your list. Anyone who can open this page can read it: protect the bar's HTTP API with a password.",
+      "description": "A Notion personal access token, or an internal connection's API token shared with your list. The bar's HTTP API gives it out: protect the API with a password.",
       "default": "",
+      "sensitive": true,
       "max_length": 255
     },
     "list": {
@@ -22,7 +23,7 @@
       "description": "Which rows a database shows, when it has a date. A page always shows all its to-dos, ticked or not.",
       "default": "today",
       "options": [
-        { "value": "today", "label": "Due today and overdue" },
+        { "value": "today", "label": "Due today, overdue or undated" },
         { "value": "all", "label": "All open tasks" }
       ]
     }

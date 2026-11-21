@@ -4,7 +4,8 @@
  * after a restart shows the level above without waiting for Notion.
  *
  * Every `setItem` rewrites the app's store to flash, so state is saved only
- * when it changed. The token is never stored here; it stays in the settings.
+ * when it changed. The token is never stored here, only a short tag of it, so
+ * titles saved under one token are not shown under another.
  */
 
 import type { View } from "./source.ts";
@@ -20,6 +21,8 @@ export interface Level {
 }
 
 export interface Saved {
+  /** `tokenTag` of the token it was read with. */
+  readonly owner: string;
   /** The start page's id, or "" for the top-level pages: what `stack[0]` was read for. */
   readonly home: string;
   /** From the start view to the one on screen. */
@@ -35,12 +38,12 @@ function storage(): Storage | undefined {
   return (globalThis as { localStorage?: Storage }).localStorage;
 }
 
-export function load(home: string): Saved | null {
+export function load(owner: string, home: string): Saved | null {
   try {
     const raw = storage()?.getItem(KEY);
     if (!raw) return null;
     const saved = JSON.parse(raw) as Saved;
-    const ok = saved.home === home && Array.isArray(saved.stack) && saved.stack.length > 0 &&
+    const ok = saved.owner === owner && saved.home === home && Array.isArray(saved.stack) && saved.stack.length > 0 &&
       Array.isArray(saved.levels) && saved.levels.length === saved.stack.length;
     return ok ? saved : null;
   } catch {

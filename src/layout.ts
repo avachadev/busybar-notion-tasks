@@ -58,6 +58,9 @@ export const TEXT_IDLE = "#FFFFFF66";
 /** The mark that stands in for the checkbox on a page or a database: the idle checkbox's grey. */
 export const MARK_COLOR = "#5F5E58";
 
+/** The dot that marks a list Notion could not confirm on the last read. */
+export const STALE_COLOR = "#FF8A3DFF";
+
 export const MESSAGE_COLOR = "#FFFFFFFF";
 export const MESSAGE_DIM_COLOR = "#FFFFFF99";
 

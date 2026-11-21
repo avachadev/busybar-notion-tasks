@@ -23,6 +23,7 @@ import {
   ROW_STEP,
   SCREEN_H,
   SCREEN_W,
+  STALE_COLOR,
   TEXT_DONE,
   TEXT_IDLE,
   TEXT_INSET_Y,
@@ -83,6 +84,27 @@ function text(id: string, x: number, y: number, value: string, color: string, sc
 /** The app's icon, on every screen and above everything, messages' backdrop included. */
 function icon(): Element {
   return image("icon", ICON_X, ICON_Y, IMAGES.icon, 5);
+}
+
+/**
+ * A 2x2 dot above the icon: the list on screen is what Notion said last, and
+ * the latest read of it failed.
+ */
+export function staleMark(): Element {
+  return {
+    id: "stale",
+    type: "rectangle",
+    display: "front",
+    align: "top_left",
+    x: ICON_X + 3,
+    y: ICON_Y - 3,
+    width: 2,
+    height: 2,
+    fill: "solid",
+    fill_colors: [STALE_COLOR],
+    border_width: 0,
+    z_index: 5,
+  } as Element;
 }
 
 /** Ids of the tasks that are ticked off, in Notion or on their way there. */

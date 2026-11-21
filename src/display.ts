@@ -25,8 +25,8 @@ export function drawElements(app: string, elements: readonly unknown[]): Promise
 
 /**
  * Clears elements by id. The bar refuses the whole request when one of the ids
- * is gone already, which happens after it wipes the app's screen on Back: then
- * each id is cleared on its own, and the missing ones are let go.
+ * is gone already, for instance after it dropped the app's elements by itself:
+ * then each id is cleared on its own, and the missing ones are let go.
  */
 export async function clearElements(app: string, ids: readonly string[]): Promise<void> {
   try {
