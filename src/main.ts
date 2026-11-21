@@ -43,8 +43,12 @@ const UNDO_MS = 1500;
 /** A tick that does not get through is sent again, up to this many tries in all, this much later each time. */
 const TICK_TRIES = 3;
 const TICK_RETRY_MS = 5000;
-/** Notion can list a task the old way for a few seconds after a change; the bar's own state wins this long. */
-const SETTLED_GRACE_MS = 60 * 1000;
+/**
+ * Notion can list a task the old way for a few seconds after a change: a read
+ * that starts this soon after a tick is confirmed keeps the bar's state. A later
+ * read wins, so a change made in Notion right after shows on the bar.
+ */
+const SETTLED_GRACE_MS = 5000;
 /** On opening a page its name is shown this long before its contents; a note stays longer. */
 const BANNER_MS = 1200;
 const NOTE_MS = 2500;
@@ -65,8 +69,8 @@ type Problem = readonly [string, string];
 
 /**
  * A task changed from the bar. `waiting` sits out UNDO_MS, `sending` is on its
- * way, retries included, `settled` is confirmed and wins over reads for
- * SETTLED_GRACE_MS.
+ * way, retries included, `settled` is confirmed and wins over reads that
+ * start within SETTLED_GRACE_MS.
  */
 interface Tick {
   stage: "waiting" | "sending" | "settled";
@@ -350,16 +354,17 @@ function main(): void {
     const view = current();
     const depth = stack.length;
     const still = () => !stopped && readKey === key && stack.length === depth && current() === view;
+    const startedAt = Date.now();
     try {
       // A read of a view the user has left stops at its next request, so the new view's read is not kept waiting.
       const result = await readView(token, view, scope, new Date(), databases, still);
       const now = Date.now();
-      ticks.forEach((t, id) => {
-        if (t.stage === "settled" && now - t.at > SETTLED_GRACE_MS) ticks.delete(id);
-      });
       const fresh = result.entries.map((e) => {
         const t = ticks.get(e.id);
-        return t && t.stage === "settled" && t.done !== e.done ? { ...e, done: t.done } : e;
+        return t && t.stage === "settled" && startedAt < t.at + SETTLED_GRACE_MS && t.done !== e.done ? { ...e, done: t.done } : e;
+      });
+      ticks.forEach((t, id) => {
+        if (t.stage === "settled" && startedAt >= t.at + SETTLED_GRACE_MS) ticks.delete(id);
       });
       if (readKey !== key) return;
       if (!still()) {
