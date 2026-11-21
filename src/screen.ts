@@ -11,6 +11,11 @@ import type { DisplayDrawParams } from "@busy-app/busy-lib";
 import {
   CHECKBOX_INSET_X,
   CHECKBOX_INSET_Y,
+  CHEVRON_INSET_Y,
+  CHEVRON_X,
+  COUNT_COLOR,
+  INDENT,
+  MAX_DEPTH,
   FOCUS_Y,
   FONT,
   ICON_X,
@@ -24,10 +29,13 @@ import {
   SCREEN_W,
   STALE_COLOR,
   TEXT_DONE,
+  TEXT_HEADING,
   TEXT_IDLE,
   TEXT_INSET_X,
   TEXT_INSET_Y,
   listX,
+  printable,
+  rowImage,
   textWidth,
 } from "./layout.ts";
 import type { Entry } from "./tasks.ts";
@@ -35,12 +43,16 @@ import type { Entry } from "./tasks.ts";
 export type Element = DisplayDrawParams["elements"][number];
 
 /**
- * Marks for what opens rather than ticks, in the checkbox's 7x7 place: an
- * arrow for a page, a grid for a database.
+ * Marks for what has no plate, in the checkbox's 7x7 place: a sheet for a
+ * page, a grid for a database, a triangle for a toggle, closed or open; and
+ * the 3x5 chevron at the right of what opens.
  */
 const MARKS: Record<string, readonly string[]> = {
-  page: ["       ", "  #    ", "  ##   ", "  ###  ", "  ##   ", "  #    ", "       "],
+  page: [" ####  ", " #  ## ", " #   # ", " #   # ", " #   # ", " #   # ", " ##### "],
   database: ["       ", " ##### ", " # # # ", " ##### ", " # # # ", " ##### ", "       "],
+  toggleClosed: ["       ", "  #    ", "  ##   ", "  ###  ", "  ##   ", "  #    ", "       "],
+  toggleOpen: ["       ", "       ", " ##### ", "  ###  ", "   #   ", "       ", "       "],
+  chevron: ["#  ", " # ", "  #", " # ", "#  "],
 };
 
 function image(id: string, x: number, y: number, path: string, z: number): Element {
@@ -48,6 +60,7 @@ function image(id: string, x: number, y: number, path: string, z: number): Eleme
 }
 
 function mark(id: string, kind: string, x: number, y: number): Element {
+  const rows = MARKS[kind];
   return {
     id,
     type: "xpmbitmap",
@@ -55,7 +68,7 @@ function mark(id: string, kind: string, x: number, y: number): Element {
     align: "top_left",
     x,
     y,
-    data: ["! XPM2", "7 7 2 1", "  c none", `# c ${MARK_COLOR}`, ...MARKS[kind]].join("\n"),
+    data: ["! XPM2", `${rows[0].length} ${rows.length} 2 1`, "  c none", `# c ${MARK_COLOR}`, ...rows].join("\n"),
     z_index: 1,
   };
 }
@@ -107,6 +120,14 @@ export function staleMark(logo = false): Element {
   } as Element;
 }
 
+/** The longest start of `value` that fits `width` px. */
+export function fit(value: string, width: number): string {
+  if (textWidth(value) <= width) return value;
+  let n = value.length;
+  while (n > 0 && textWidth(value.substring(0, n)) > width) n -= 1;
+  return value.substring(0, n);
+}
+
 /** Ids of the tasks that are ticked off, in Notion or on their way there. */
 export type Done = ReadonlySet<string>;
 
@@ -115,13 +136,26 @@ const SLOTS = [-1, 0, 1];
 
 /**
  * The list: the focused entry in the middle, the ones around it cut by the
- * screen's edges. A ticked task has the highlighted row, the blue checkbox and
- * faded text; an open one the dark row, an empty checkbox and white text.
- * Pages and databases have the dark row and a mark instead of a checkbox. Only
- * the focused line scrolls when it is too long; the others run off the edge.
+ * screen's edges. Only a task has a plate: the highlighted one with the blue
+ * checkbox and faded text when ticked, the dark one with an empty checkbox and
+ * white text when open. A page, a database and a toggle have a mark in the
+ * checkbox's place and no plate; a page and a database a chevron at the right,
+ * a toggle the count of open tasks in it. A heading is faded text alone. Each
+ * level of nesting moves a line INDENT px right. Only the focused line scrolls
+ * when it is too long; the others run off their room.
  */
-export function listFrame(entries: readonly Entry[], selected: number, doneIds: Done, logo = false): Element[] {
-  const x0 = listX(logo);
+export function listFrame(
+  entries: readonly Entry[],
+  selected: number,
+  doneIds: Done,
+  logo = false,
+  openToggles: ReadonlySet<string> = new Set(),
+): Element[] {
+  /** The focused line scrolls in its room; the others are cut to it, so they stay clear of a chevron or a count. */
+  const line = (id: string, x: number, y: number, title: string, color: string, room: number, focused: boolean) => {
+    const value = printable(title);
+    return text(id, x, y, focused ? value : fit(value, room), color, focused ? room : null);
+  };
   const elements: Element[] = logo ? [icon()] : [];
   for (const offset of SLOTS) {
     const i = selected + offset;
@@ -129,20 +163,32 @@ export function listFrame(entries: readonly Entry[], selected: number, doneIds: 
     const entry = entries[i];
     const slot = offset + 1;
     const y = FOCUS_Y + offset * ROW_STEP;
-    const isPlace = entry.kind === "page" || entry.kind === "database";
-    const done = !isPlace && doneIds.has(entry.id);
-
-    const row = logo ? (done ? IMAGES.rowDone : IMAGES.rowIdle) : (done ? IMAGES.rowDoneWide : IMAGES.rowIdleWide);
-    elements.push(image(`row${slot}`, x0, y, row, 0));
+    const x0 = listX(logo) + INDENT * Math.min(entry.depth ?? 0, MAX_DEPTH);
+    const focused = offset === 0;
+    const textX = x0 + TEXT_INSET_X;
+    const markY = y + CHECKBOX_INSET_Y;
     // Each kind of mark has its own id: the bar rejects a draw that changes an
     // element's type under the same id. A slot that changes kind is cleared once.
-    const markY = y + CHECKBOX_INSET_Y;
-    elements.push(isPlace
-      ? mark(`${entry.kind}${slot}`, entry.kind, x0 + CHECKBOX_INSET_X, markY)
-      : image(`box${slot}`, x0 + CHECKBOX_INSET_X, markY, done ? IMAGES.checkboxDone : IMAGES.checkboxIdle, 1));
-    const textX = x0 + TEXT_INSET_X;
-    const scroll = offset === 0 ? SCREEN_W - textX : null;
-    elements.push(text(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, done ? TEXT_DONE : TEXT_IDLE, scroll));
+    if (entry.kind === "todo" || entry.kind === "row") {
+      const done = doneIds.has(entry.id);
+      elements.push(image(`row${slot}`, x0, y, rowImage(done, SCREEN_W - x0), 0));
+      elements.push(image(`box${slot}`, x0 + CHECKBOX_INSET_X, markY, done ? IMAGES.checkboxDone : IMAGES.checkboxIdle, 1));
+      elements.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, done ? TEXT_DONE : TEXT_IDLE, SCREEN_W - textX, focused));
+    } else if (entry.kind === "page" || entry.kind === "database") {
+      elements.push(mark(`${entry.kind}${slot}`, entry.kind, x0 + CHECKBOX_INSET_X, markY));
+      elements.push(mark(`chevron${slot}`, "chevron", CHEVRON_X, y + CHEVRON_INSET_Y));
+      elements.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, TEXT_IDLE, CHEVRON_X - 2 - textX, focused));
+    } else if (entry.kind === "toggle") {
+      const open = openToggles.has(entry.id);
+      elements.push(mark(`toggle${slot}`, open ? "toggleOpen" : "toggleClosed", x0 + CHECKBOX_INSET_X, markY));
+      const count = String(entry.count ?? 0);
+      const countX = SCREEN_W - 1 - textWidth(count);
+      if (entry.count) elements.push(text(`count${slot}`, countX, y + TEXT_INSET_Y, count, COUNT_COLOR, null));
+      const room = (entry.count ? countX - 1 : SCREEN_W) - textX;
+      elements.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, TEXT_IDLE, room, focused));
+    } else {
+      elements.push(line(`text${slot}`, x0 + 1, y + TEXT_INSET_Y, entry.title, TEXT_HEADING, SCREEN_W - x0 - 1, false));
+    }
   }
   return elements;
 }
@@ -158,7 +204,8 @@ export function messageFrame(title: string, detail: string, logo = false): Eleme
   const x0 = listX(logo);
   const middle = x0 + (SCREEN_W - x0) / 2;
   const inner = SCREEN_W - x0 - 2;
-  const line = (id: string, y: number, value: string, color: string): Element => {
+  const line = (id: string, y: number, raw: string, color: string): Element => {
+    const value = printable(raw);
     const long = textWidth(value) > inner;
     return {
       id,

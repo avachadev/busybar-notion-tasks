@@ -17,7 +17,8 @@ const KEY = "place";
 export interface Level {
   readonly entries: Entry[];
   readonly database: Database | null;
-  readonly selected: number;
+  /** The id of the focused entry: an index would point elsewhere once a toggle opens or closes. */
+  readonly focus: string;
 }
 
 export interface Saved {
@@ -54,7 +55,7 @@ export function load(owner: string, home: string): Saved | null {
 export function save(saved: Saved): void {
   try {
     const levels = saved.levels.map((l) => (l && l.entries.length > MAX_SAVED_ENTRIES
-      ? { ...l, entries: l.entries.slice(0, MAX_SAVED_ENTRIES), selected: Math.min(l.selected, MAX_SAVED_ENTRIES - 1) }
+      ? { ...l, entries: l.entries.slice(0, MAX_SAVED_ENTRIES) }
       : l));
     const raw = JSON.stringify({ ...saved, levels });
     const store = storage();

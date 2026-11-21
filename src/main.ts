@@ -17,6 +17,8 @@ import manifest from "./appmeta/manifest.json";
 import { type Level, load, save } from "./cache.ts";
 import { type Config, configKey, readConfig, tokenTag, usable } from "./config.ts";
 import { clearElements, drawElements } from "./display.ts";
+import { focusable, settle, step } from "./focus.ts";
+import { shownEntries } from "./markdown.ts";
 import { NotionError } from "./notion.ts";
 import { type Element, listFrame, messageFrame as message, staleMark } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
@@ -160,6 +162,21 @@ function main(): void {
   let bannerTimer: ReturnType<typeof setTimeout> | undefined;
 
   const remembered = new Map<string, Level>();
+  /** Per view, the toggles opened on the bar; every toggle starts closed. */
+  const openToggles = new Map<string, Set<string>>();
+  const openHere = (): Set<string> => {
+    const k = viewKey(current());
+    let set = openToggles.get(k);
+    if (!set) {
+      set = new Set();
+      openToggles.set(k, set);
+    }
+    return set;
+  };
+  /** The lines of the view that show: none inside a closed toggle. `selected` counts in these. */
+  const shown = (): Entry[] => shownEntries(entries, openHere());
+  /** The id of the focused line, kept for coming back to it. */
+  const focused = (): string => shown()[selected]?.id ?? "";
   const databases = new Map<string, Database>();
   const ticks = new Map<string, Tick>();
 
@@ -231,9 +248,11 @@ function main(): void {
       if (view.kind === "root") return messageFrame("No pages", "share pages with the connection");
       return messageFrame(title, "no tasks or pages");
     }
+    const lines = shown();
+    if (!lines.some(focusable)) return messageFrame(title, "no tasks or pages");
     const done = new Set<string>();
-    for (const e of entries) if (isTask(e) && isDone(e)) done.add(e.id);
-    const list = listFrame(entries, selected, done, logo);
+    for (const e of lines) if (isTask(e) && isDone(e)) done.add(e.id);
+    const list = listFrame(lines, selected, done, logo, openHere());
     if (stale) list.push(staleMark(logo));
     return list;
   }
@@ -291,8 +310,12 @@ function main(): void {
   // ---- State ---------------------------------------------------------------
 
   function selectById(id: string | undefined): void {
-    const at = id === undefined ? -1 : entries.findIndex((t) => t.id === id);
-    selected = at >= 0 ? at : Math.max(0, Math.min(selected, entries.length - 1));
+    const lines = shown();
+    // A line inside a closed toggle hands the focus to that toggle.
+    const hidden = entries.find((e) => e.id === id);
+    const target = hidden && lines.indexOf(hidden) < 0 ? ((hidden.toggles ?? []).find((t) => !openHere().has(t)) ?? id) : id;
+    const at = target === undefined ? -1 : lines.findIndex((t) => t.id === target);
+    selected = settle(lines, at >= 0 ? at : selected);
   }
 
   function keep(view: View, level: Level): void {
@@ -308,7 +331,7 @@ function main(): void {
   /** Saves the path and what every step of it shows, so going up after a restart needs no read. */
   function persist(): void {
     if (!loaded) return;
-    const levels = stack.map((v, i) => (i === stack.length - 1 ? { entries, database, selected } : remembered.get(viewKey(v)) ?? null));
+    const levels = stack.map((v, i) => (i === stack.length - 1 ? { entries, database, focus: focused() } : remembered.get(viewKey(v)) ?? null));
     save({ owner, home, stack, levels });
   }
 
@@ -317,8 +340,9 @@ function main(): void {
     const level = remembered.get(viewKey(view));
     entries = level ? level.entries : [];
     database = level ? level.database : null;
-    selected = level ? level.selected : 0;
     loaded = level !== undefined;
+    selected = 0;
+    selectById(level?.focus);
     stale = false;
     problem = null;
     failures = 0;
@@ -352,6 +376,7 @@ function main(): void {
     rootReadAt = 0;
     owner = next.token ? tokenTag(next.token) : "";
     remembered.clear();
+    openToggles.clear();
     databases.clear();
     dropBanner();
     home = next.link.kind === "id" ? next.link.id : "";
@@ -393,10 +418,10 @@ function main(): void {
       if (!still()) {
         // The user moved on while this was read: keep it for when they come back.
         const before = remembered.get(viewKey(view));
-        keep(result.view, { entries: fresh, database: result.database, selected: before ? before.selected : 0 });
+        keep(result.view, { entries: fresh, database: result.database, focus: before ? before.focus : "" });
         return;
       }
-      const keepId = entries[selected]?.id;
+      const keepId = shown()[selected]?.id;
       stack[stack.length - 1] = result.view;
       entries = fresh;
       database = result.database;
@@ -406,7 +431,7 @@ function main(): void {
       problem = null;
       failures = 0;
       nextReadAt = now + (view.kind === "root" ? ROOT_CHECK_MS : REFRESH_MS);
-      keep(result.view, { entries, database, selected });
+      keep(result.view, { entries, database, focus: focused() });
       persist();
     } catch (err) {
       if (!still()) return;
@@ -479,7 +504,7 @@ function main(): void {
         const next = withDone(entries, id, t.done);
         if (next) {
           entries = next;
-          keep(current(), { entries, database, selected });
+          keep(current(), { entries, database, focus: focused() });
           persist();
         }
         remembered.forEach((level, k) => {
@@ -571,11 +596,19 @@ function main(): void {
     }
     const token = config?.token;
     if (!loaded || !token) return;
-    const entry = entries[selected];
-    if (!entry) return;
+    const entry = shown()[selected];
+    if (!entry || !focusable(entry)) return;
+    if (entry.kind === "toggle") {
+      // Opens or closes in place: what is inside shows under it, one level deeper.
+      const open = openHere();
+      if (open.has(entry.id)) open.delete(entry.id);
+      else open.add(entry.id);
+      redraw();
+      return;
+    }
     if (entry.kind === "page" || entry.kind === "database") {
       flushPending();
-      keep(current(), { entries, database, selected });
+      keep(current(), { entries, database, focus: focused() });
       stack.push({ kind: entry.kind, id: entry.id, title: entry.title });
       enter(current());
       showBanner(entry.title, null, BANNER_MS);
@@ -606,7 +639,7 @@ function main(): void {
     }
     flushPending();
     dropBanner();
-    keep(current(), { entries, database, selected });
+    keep(current(), { entries, database, focus: focused() });
     stack.pop();
     enter(current());
     redraw();
@@ -615,7 +648,8 @@ function main(): void {
   function move(delta: number): void {
     if (!loaded || entries.length === 0) return;
     if (banner) dropBanner();
-    selected = Math.max(0, Math.min(entries.length - 1, selected + delta));
+    // Headings are passed over.
+    selected = step(shown(), selected, delta);
     redraw();
   }
 

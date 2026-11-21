@@ -5,10 +5,10 @@ Browse your Notion from a [BUSY Bar](https://busy.bar) and tick tasks off with i
 ![Tasks for Notion on the BUSY Bar front display](docs/demo.gif)
 
 The bar shows Notion the way its sidebar does: your top-level pages and databases, then whatever a page
-holds, its subpages, the databases inside it and its to-dos, in the page's own order. To-dos inside
-toggles, toggle headings, columns, callouts, quotes, synced blocks and lists count, and so do to-dos
-nested under other to-dos. Turn the wheel to move, press
-**OK** to open a page or to tick a task off. A ticked task stays where it is, as in Notion, with a burst
+holds, its subpages, the databases inside it, its toggles, headings and to-dos, in the page's own
+order. To-dos nested under other to-dos and inside toggles are indented; what is in columns, callouts,
+quotes, synced blocks and lists shows in place. Turn the wheel to move, press **OK** to open a page,
+to open or close a toggle, or to tick a task off. A ticked task stays where it is, as in Notion, with a burst
 of confetti. Press **OK** again to untick it.
 
 The bar talks to the Notion API itself, over its own Wi-Fi. No computer, server or proxy is involved:
@@ -44,16 +44,21 @@ Either of these works.
 
 | Control | What it does |
 | --- | --- |
-| Wheel | Moves through the entries. The focused one sits in the middle of the screen. |
-| **OK** or **Start** | Opens a page or a database. On a task, ticks it off or back on. |
+| Wheel | Moves through the entries, passing over headings. The focused one sits in the middle of the screen. |
+| **OK** or **Start** | Opens a page or a database. Opens or closes a toggle in place. On a task, ticks it off or back on. |
 | **Back** | Goes up a level. On the top level, leaves the app. |
 
 | Entry | Looks like |
 | --- | --- |
-| Page | An arrow ▸ |
-| Database | A small grid |
-| Open task | An empty checkbox, white text |
-| Ticked task | A blue checkbox, highlighted row, faded text |
+| Open task | A plate, an empty checkbox, white text |
+| Ticked task | A highlighted plate, a blue checkbox, faded text |
+| Page | No plate; a sheet on the left, a chevron › on the right |
+| Database | No plate; a grid on the left, a chevron › on the right |
+| Toggle | No plate; ▸ closed, ▾ open, the number of open tasks inside on the right. Toggles start closed. |
+| Heading | Faded text, no mark; the focus passes over it |
+
+Each level of nesting moves a line 2 px right, up to three levels. An empty to-do is not shown; the
+to-dos under it take its place. Plain paragraphs are not shown.
 
 A tick goes to Notion 1.5 seconds after the press; a second press within that time takes it back
 without any request. Leaving the page sends the ticks made on it right away. A tick that does not get

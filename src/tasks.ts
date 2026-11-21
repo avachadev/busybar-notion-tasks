@@ -50,10 +50,11 @@ export interface Database {
 
 /**
  * One line on screen. `page` and `database` open; `todo` (a to-do block on a
- * page) and `row` (a database row) tick off and back on.
+ * page) and `row` (a database row) tick off and back on; `toggle` shows or
+ * hides what is inside it; `heading` only names a part of the page.
  */
 export interface Entry {
-  readonly kind: "page" | "database" | "todo" | "row";
+  readonly kind: "page" | "database" | "todo" | "row" | "toggle" | "heading";
   /** Block id for a subpage, an inline database and a to-do; page id for a row. */
   readonly id: string;
   readonly title: string;
@@ -64,6 +65,12 @@ export interface Entry {
   readonly index?: number;
   /** Its markdown line, `- [ ] ...`, when no other line of the page contains it: then it can be ticked by text. */
   readonly line?: string;
+  /** How deep it sits on the page: under to-dos and inside toggles. */
+  readonly depth?: number;
+  /** The toggles it is inside, outermost first: it shows when all of them are open. */
+  readonly toggles?: readonly string[];
+  /** For a toggle: the open tasks inside it, however deep. */
+  readonly count?: number;
 }
 
 /** Which tasks a database list shows. */

@@ -38,25 +38,37 @@ export const CHECKBOX_INSET_Y = 1;
 export const TEXT_INSET_X = 11;
 export const TEXT_INSET_Y = 0;
 
-/**
- * Images from the design, packaged under src/images. The rows are 72 px wide,
- * or 62 px with the logo: 10 px less of their flat middle.
- */
+/** Images from the design, packaged under src/images. */
 export const IMAGES = {
   icon: "images/notion_icon.png",
-  rowDone: "images/row_done.png",
-  rowIdle: "images/row_idle.png",
-  rowDoneWide: "images/row_done_wide.png",
-  rowIdleWide: "images/row_idle_wide.png",
   checkboxDone: "images/checkbox_done.png",
   checkboxIdle: "images/checkbox_idle.png",
 };
 
-/** Text of an open task, a page and a database is white; a ticked task's fades to 40%. */
+/** Each level of nesting moves a line this far right; deeper than MAX_DEPTH stays there. */
+export const INDENT = 2;
+export const MAX_DEPTH = 3;
+
+/**
+ * A task's plate, from the screen's right edge back to where the line starts:
+ * 72 px less the logo's 10 and the indent. Every width is its own PNG, cut
+ * from the flat middle of the 72 px one.
+ */
+export function rowImage(done: boolean, width: number): string {
+  return `images/row_${done ? "done" : "idle"}_${width}.png`;
+}
+
+/** Text of an open task, a page and a database is white; a ticked task's fades to 40%; a heading's to 50%. */
 export const TEXT_DONE = "#FFFFFF66";
 export const TEXT_IDLE = "#FFFFFFFF";
-/** The mark that stands in for the checkbox on a page or a database: the idle checkbox's grey. */
-export const MARK_COLOR = "#5F5E58";
+export const TEXT_HEADING = "#FFFFFF80";
+/** A toggle's count of open tasks. */
+export const COUNT_COLOR = "#FFFFFF80";
+/** The marks of what has no plate: pages, databases, toggles, and the chevron of what opens. */
+export const MARK_COLOR = "#8C8B85";
+/** The chevron at the right of a page or a database: 3x5, 1 px in from the screen's edge. */
+export const CHEVRON_X = SCREEN_W - 4;
+export const CHEVRON_INSET_Y = 2;
 
 /** The dot that marks a list Notion could not confirm on the last read. */
 export const STALE_COLOR = "#FF8A3DFF";
@@ -67,6 +79,35 @@ export const MESSAGE_DIM_COLOR = "#FFFFFF99";
 /** Where the list starts: the screen's left edge, or 2 px right of the icon. */
 export function listX(logo: boolean): number {
   return logo ? 10 : 0;
+}
+
+/**
+ * The characters the bar's `small` font has, as from-to code pairs, read from
+ * the firmware's `assets/shared/fonts/ttf/busy_regular_5px.ttf`. The metrics in
+ * busy-lib list more (for instance No. sign), but the bar draws those as a box.
+ */
+const GLYPHS = [32, 95, 97, 126, 160, 161, 163, 163, 165, 167, 169, 169, 171, 171, 174, 174, 176, 179, 182, 183, 185, 185, 187, 187,
+  191, 191, 215, 215, 247, 247, 1025, 1025, 1040, 1103, 1105, 1105, 8202, 8202, 8211, 8212, 8216, 8218, 8220, 8222, 8224, 8226,
+  8230, 8230, 8249, 8250, 8287, 8287, 8304, 8304, 8308, 8313, 8320, 8329, 8364, 8364, 8381, 8381, 8482, 8482, 8592, 8601, 8721,
+  8722, 8730, 8730, 8734, 8734, 8776, 8776, 8800, 8800, 8804, 8805, 9654, 9654, 9664, 9664, 65295, 65295];
+
+export function hasGlyph(code: number): boolean {
+  for (let i = 0; i < GLYPHS.length; i += 2) if (code >= GLYPHS[i] && code <= GLYPHS[i + 1]) return true;
+  return false;
+}
+
+/** Stand-ins for characters the font lacks that people put in titles. Anything else missing, emoji included, is left out. */
+const STANDINS: Record<string, string> = {
+  "\u2116": "No", "`": "'", "\u00e9": "e", "\u00e8": "e", "\u00ea": "e", "\u00eb": "e", "\u00e0": "a", "\u00e1": "a", "\u00e2": "a",
+  "\u00e4": "a", "\u00f6": "o", "\u00f3": "o", "\u00f4": "o", "\u00fc": "u", "\u00fa": "u", "\u00f1": "n", "\u00e7": "c", "\u00df": "ss",
+  "\u00ed": "i", "\u00c9": "E", "\u00d6": "O", "\u00dc": "U", "\u00c4": "A",
+};
+
+/** `text` as the bar can draw it: missing characters replaced or left out. */
+export function printable(text: string): string {
+  let out = "";
+  for (const ch of text) out += hasGlyph(ch.codePointAt(0) ?? 0) ? ch : (STANDINS[ch] ?? "");
+  return out.replace(/\s+/g, " ").trim();
 }
 
 /** Width of `text` in the app's font, in pixels. */
