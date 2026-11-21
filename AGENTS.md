@@ -25,7 +25,9 @@ off. What it does, its settings and its files: [README.md](README.md).
   - `DELETE` with `element_ids` is refused whole when one id is gone (`display.ts`).
 - Settings:
   - the app reads them only through `GET /api/apps/settings` and cannot write them;
-  - `"sensitive": true` hides the token in local web, but the API still serves it.
+  - `"sensitive": true` hides the token in local web, but the API still serves it;
+  - bumping `version` in `settings.json` makes the bar discard the stored values, the token included:
+    keep it at 1 unless the old values must go.
 - `localStorage`: every `setItem` rewrites flash. `cache.ts` writes only on change and never stores the
   token.
 
