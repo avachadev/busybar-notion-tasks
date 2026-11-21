@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { entriesFromBlocks, foundInSearch, pickRoots, localDate, localDayStart, openFirst, plainText, queryBody, queryPath, readSchema, setDoneCall, tasksFromQuery } from "../src/tasks.ts";
+import { foundInSearch, pickRoots, localDate, localDayStart, openFirst, plainText, queryBody, queryPath, readSchema, setDoneCall, tasksFromQuery } from "../src/tasks.ts";
 
 const rt = (s: string) => [{ type: "text", plain_text: s }];
 
@@ -128,26 +128,6 @@ test("reads titles from query results", () => {
   ]);
 });
 
-test("a page lists its subpages, databases and to-dos, in order", () => {
-  const entries = entriesFromBlocks({
-    results: [
-      { id: "h", type: "heading_2", heading_2: { rich_text: rt("Today") } },
-      { id: "s", type: "child_page", child_page: { title: "\u0421\u0435\u043d\u0442\u044f\u0431\u0440\u044c" } },
-      { id: "b1", type: "to_do", to_do: { rich_text: rt("Review PR"), checked: false } },
-      { id: "b2", type: "to_do", to_do: { rich_text: rt("Done one"), checked: true } },
-      { id: "b3", type: "to_do", to_do: { rich_text: [], checked: false } },
-      { id: "d", type: "child_database", child_database: { title: "Tasks" } },
-      { id: "x", type: "child_page", in_trash: true, child_page: { title: "Old" } },
-    ],
-  });
-  assert.deepEqual(entries, [
-    { kind: "page", id: "s", title: "\u0421\u0435\u043d\u0442\u044f\u0431\u0440\u044c" },
-    { kind: "todo", id: "b1", title: "Review PR", done: false },
-    { kind: "todo", id: "b2", title: "Done one", done: true },
-    { kind: "database", id: "d", title: "Tasks" },
-  ]);
-});
-
 const searchPage = (id: string, parent: Record<string, unknown>, title: string) => ({
   object: "page",
   id,
@@ -178,6 +158,37 @@ test("a page shared deeper down counts as top level once the search is complete"
   assert.deepEqual(pickRoots(found, true).map((e) => e.id), ["tasks"]);
   // With results left unread the parent may just be further on, so only the workspace counts.
   assert.deepEqual(pickRoots(found, false), []);
+});
+
+test("a page inside a toggle or a column is not top level: its page shows it", () => {
+  const found = foundInSearch({ results: [searchPage("in-toggle", { type: "block_id", block_id: "t" }, "Notes")] });
+  assert.deepEqual(pickRoots(found, true), []);
+});
+
+const selectDb = {
+  properties: {
+    Name: { id: "title", name: "Name", type: "title", title: {} },
+    Stage: { id: "sg", name: "Stage", type: "select", select: { options: [{ name: "Todo" }, { name: "Doing" }, { name: "Done" }] } },
+  },
+};
+
+test("a select with a Done option marks tasks done", () => {
+  const schema = readSchema(selectDb)!;
+  assert.deepEqual(schema.done, { kind: "select", id: "sg", doneName: "Done", openTo: "Todo" });
+  const body = queryBody(schema, "all", "2026-11-06", START) as { filter: { or: { and: unknown[] }[] } };
+  assert.deepEqual(body.filter.or[0].and, [{ property: "sg", select: { does_not_equal: "Done" } }]);
+  assert.deepEqual(body.filter.or[1].and[0], { property: "sg", select: { equals: "Done" } });
+  const rows = tasksFromQuery({
+    results: [
+      { object: "page", id: "a", properties: { Name: { id: "title", title: rt("A") }, Stage: { id: "sg", select: { name: "Done" } } } },
+      { object: "page", id: "b", properties: { Name: { id: "title", title: rt("B") }, Stage: { id: "sg", select: null } } },
+    ],
+  }, schema);
+  assert.deepEqual(rows.map((r) => r.done), [true, false]);
+  const db = { dataSourceId: "ds", schema };
+  const row = { kind: "row" as const, id: "a", title: "" };
+  assert.deepEqual(setDoneCall(row, db, true)?.body, { properties: { sg: { select: { name: "Done" } } } });
+  assert.deepEqual(setDoneCall(row, db, false)?.body, { properties: { sg: { select: { name: "Todo" } } } });
 });
 
 test("long titles are capped", () => {

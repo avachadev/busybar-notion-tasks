@@ -4,8 +4,10 @@ Browse your Notion from a [BUSY Bar](https://busy.bar) and tick tasks off with i
 
 ![Tasks for Notion on the BUSY Bar front display](docs/demo.gif)
 
-The bar shows Notion the way its sidebar does: your top-level pages, then whatever a page holds, its
-subpages, the databases inside it and its to-dos, in the page's own order. Turn the wheel to move, press
+The bar shows Notion the way its sidebar does: your top-level pages and databases, then whatever a page
+holds, its subpages, the databases inside it and its to-dos, in the page's own order. To-dos inside
+toggles, toggle headings, columns, callouts, quotes, synced blocks and lists count, and so do to-dos
+nested under other to-dos. Turn the wheel to move, press
 **OK** to open a page or to tick a task off. A ticked task stays where it is, as in Notion, with a burst
 of confetti. Press **OK** again to untick it.
 
@@ -69,11 +71,14 @@ A database shows its open rows that are due today or earlier or have no date, so
 rows ticked off today, so a task closed by mistake can be reopened. The app finds the properties by itself:
 
 - **Done**: a checkbox named like *Done*, *Complete* or *Finished* (or its Russian equivalent); else a
-  status property, where any option in its *Complete* group means done; else any checkbox.
+  status property, where any option in its *Complete* group means done; else a select with an option
+  named like *Done*; else any checkbox. A database with several data sources uses the first one that
+  has one of these.
 - **Due date**: a date property named like *Due* or *Date*; else the first date property. A database
   without one shows all open rows.
 
-Unticking a status row sets it back to the status's default option. Notion has no "closed at" date,
+Unticking a status row sets it back to the status's default option, a select row to its first option
+that is not done. Notion has no "closed at" date,
 so "ticked off today" means a done row edited since midnight by the bar's clock.
 
 ## Settings
@@ -117,9 +122,13 @@ path you were on and the titles shown there.
 
 ## Limits
 
-- Notion's API has no call for the sidebar, so the top-level pages are picked out of a search of up to
-  100 pages. In a large workspace some may be missing; set a **Start page** then.
-- A page shows its first 200 blocks. To-dos nested inside toggles or columns are not shown.
+- Notion's API has no call for the sidebar, so the top level is picked out of searches of up to 100
+  pages and 30 databases. In a large workspace some may be missing; set a **Start page** then.
+- A page is read in one request, as Notion's markdown. A to-do whose text appears once on the page is
+  ticked in one request too. One whose text repeats, or that sits in a synced block copied from another
+  page, needs the page's blocks walked first: on a page with many toggles the first such tick takes
+  some seconds; later ones on the page do not.
+- A linked view of a database is not opened: open the database it shows.
 - A database shows up to 20 rows.
 - Each request to Notion takes the bar 1.3-1.7 seconds. Reads wait while the wheel turns, so scrolling
   stays quick.
@@ -164,6 +173,7 @@ Over Wi-Fi add `-- --addr <bar-ip>` (and `--password <password>` if the bar has 
 | --- | --- |
 | `src/main.ts` | Entry point: navigation, ticking, refreshes, drawing, the buttons. |
 | `src/source.ts` | Reads a view (the top level, a page or a database) and ticks tasks in Notion. |
+| `src/markdown.ts` | Turns a page's markdown into entries, to-dos in toggles, columns and the rest included. |
 | `src/tasks.ts` | Turns Notion's answers into entries; finds a database's properties; builds queries. |
 | `src/notion.ts` | The Notion API client: one `fetch` per call, errors as `NotionError`. |
 | `src/link.ts` | Turns a pasted Notion link into an id. |

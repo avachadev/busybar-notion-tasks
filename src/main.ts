@@ -19,7 +19,7 @@ import { type Config, configKey, readConfig, tokenTag, usable } from "./config.t
 import { clearElements, drawElements } from "./display.ts";
 import { NotionError } from "./notion.ts";
 import { type Element, listFrame, messageFrame, staleMark } from "./screen.ts";
-import { NoDoneFieldError, type View, readView, setDone } from "./source.ts";
+import { MovedError, NoDoneFieldError, type View, readView, setDone } from "./source.ts";
 import { type Database, type Entry, isTask } from "./tasks.ts";
 
 /** The name the app draws under; the device clears elements by this id. */
@@ -81,6 +81,8 @@ interface Tick {
   timer: ReturnType<typeof setTimeout> | undefined;
   tries: number;
   at: number;
+  /** Pressed again while `sending`: the state to send once this one is through. */
+  then: boolean | null;
 }
 
 function viewKey(view: View): string {
@@ -107,6 +109,7 @@ function count(entries: readonly Entry[]): string {
 function explain(err: unknown, failures: number): { problem: Problem; retryMs: number; drop: boolean } {
   const backOff = Math.min(RETRY_MS * Math.pow(2, failures), MAX_RETRY_MS);
   if (err instanceof NoDoneFieldError) return { problem: ["No checkbox", "or status in this database"], retryMs: MAX_RETRY_MS, drop: true };
+  if (err instanceof MovedError) return { problem: ["Page changed", "try again"], retryMs: 0, drop: false };
   if (err instanceof NotionError) {
     if (err.status === 401) return { problem: ["Bad token", "check the settings"], retryMs: MAX_RETRY_MS, drop: true };
     if (err.status === 403 || err.status === 404) {
@@ -156,7 +159,8 @@ function main(): void {
   /** What a task shows: the change on its way if there is one, else what Notion said. */
   const isDone = (e: Entry): boolean => {
     const t = ticks.get(e.id);
-    return t && t.stage !== "settled" ? t.done : e.done === true;
+    if (!t || t.stage === "settled") return e.done === true;
+    return t.then ?? t.done;
   };
 
   const report = (where: string, err: unknown) =>
@@ -427,6 +431,10 @@ function main(): void {
 
   // ---- Ticking tasks ------------------------------------------------------
 
+  function newTick(task: Entry, db: Database | null, token: string, done: boolean): Tick {
+    return { stage: "waiting", done, task, database: db, token, timer: undefined, tries: 0, at: Date.now(), then: null };
+  }
+
   /** Sets a task's state in a list, if the list has it. */
   function withDone(list: Entry[], id: string, done: boolean): Entry[] | null {
     if (!list.some((t) => t.id === id)) return null;
@@ -459,6 +467,12 @@ function main(): void {
           const list = withDone(level.entries, id, t.done);
           if (list) remembered.set(k, { ...level, entries: list });
         });
+        // Pressed again meanwhile: that goes out now, without the wait.
+        if (t.then !== null && t.then !== t.done && !stopped) {
+          const again = newTick(t.task, t.database, t.token, t.then);
+          ticks.set(id, again);
+          send(id);
+        }
       })
       .catch((err: unknown) => {
         if (ticks.get(id) !== t) return;
@@ -470,6 +484,8 @@ function main(): void {
         report("tick", err);
         // The task shows what Notion has again, and the screen says why.
         ticks.delete(id);
+        // The page changed under the tick: read it now, so the next try finds the task.
+        if (err instanceof MovedError) nextReadAt = 0;
         if (!stopped) showBanner("Not saved", explain(err, 0).problem[0], NOTE_MS);
       })
       .then(() => redraw());
@@ -547,25 +563,20 @@ function main(): void {
       return;
     }
     const t = ticks.get(entry.id);
-    if (t && t.stage === "sending") return;
-    if (t && t.stage === "waiting") {
+    const done = !isDone(entry);
+    if (t && t.stage === "sending") {
+      // Sent already: the press is kept and goes out once the request is through.
+      t.then = done;
+    } else if (t && t.stage === "waiting") {
       if (t.timer !== undefined) clearTimeout(t.timer);
       ticks.delete(entry.id);
     } else {
       const id = entry.id;
-      const done = !isDone(entry);
-      ticks.set(id, {
-        stage: "waiting",
-        done,
-        task: entry,
-        database,
-        token,
-        timer: setTimeout(() => send(id), UNDO_MS),
-        tries: 0,
-        at: Date.now(),
-      });
-      if (done) celebrate();
+      const tick = newTick(entry, database, token, done);
+      tick.timer = setTimeout(() => send(id), UNDO_MS);
+      ticks.set(id, tick);
     }
+    if (done && !(t && t.stage === "waiting")) celebrate();
     redraw();
   }
 

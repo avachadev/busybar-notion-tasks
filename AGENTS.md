@@ -17,6 +17,11 @@ off. What it does, its settings and its files: [README.md](README.md).
   - No abort.
   - Two HTTPS requests at once have rebooted the bar, so `notion.ts` keeps one request on the wire.
 - No incoming connections: Notion webhooks cannot reach the bar. The open view is polled (`REFRESH_MS`).
+- Notion:
+  - a page is read as markdown (`GET /pages/{id}/markdown?markdown_version=v2`): one request, nested
+    to-dos included, no block ids;
+  - a to-do with a unique line is ticked with `PATCH /pages/{id}/markdown` (`update_content`), which
+    keeps the block; otherwise its block id is found by walking the page's blocks once (`source.ts`).
 - Back:
   - only `short` reaches the app; `long` never does;
   - Back does not clear the app's elements, so `show()` clears what left the frame.

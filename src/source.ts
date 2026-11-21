@@ -1,11 +1,11 @@
 /** Reads what one screen of the app shows, and closes tasks. */
 
+import { entriesFromMarkdown, sameText } from "./markdown.ts";
 import { type Json, NotionError, call } from "./notion.ts";
 import {
   type Database,
   type Entry,
   type Scope,
-  entriesFromBlocks,
   foundInSearch,
   localDate,
   localDayStart,
@@ -17,13 +17,17 @@ import {
   pickRoots,
   setDoneCall,
   tasksFromQuery,
+  walkedBlocks,
 } from "./tasks.ts";
 
-/** The database has nothing that marks a task done: no checkbox, no status. */
+/** The database has nothing that marks a task done: no checkbox, status or done-like select. */
 export class NoDoneFieldError extends Error {}
 
 /** The read was given up because the user left the view. */
 export class CancelledError extends Error {}
+
+/** A to-do's block was not where the page's markdown put it: the page changed meanwhile. */
+export class MovedError extends Error {}
 
 /** Tells a read whether it is still wanted; checked before every request. */
 export type Alive = () => boolean;
@@ -33,8 +37,8 @@ function check(alive: Alive): void {
 }
 
 /**
- * Where the user is. `root` is the top-level pages; `start` is the page or
- * database from the settings, until the first read tells which it is.
+ * Where the user is. `root` is the top level; `start` is the page or database
+ * from the settings, until the first read tells which it is.
  */
 export type View =
   | { readonly kind: "root" }
@@ -49,53 +53,49 @@ export interface Loaded {
   readonly database: Database | null;
 }
 
-/** Blocks per request when reading a page. */
-const BLOCKS_PER_PAGE = 50;
-/** Four requests of 50: a page longer than 200 blocks shows its first part. */
-const MAX_BLOCK_PAGES = 4;
-/** Search results per request, and how many requests a root read may make. */
+/** Search results per request, and how many requests a root read may make, for pages and for databases. */
 const SEARCH_PER_PAGE = 20;
-const MAX_SEARCH_PAGES = 5;
+const MAX_PAGE_SEARCHES = 5;
+const DATABASES_PER_SEARCH = 10;
+const MAX_DATABASE_SEARCHES = 3;
+/** A database's data sources tried for one with a done field. */
+const MAX_SOURCES = 3;
+/** Blocks per request when looking for a to-do's id. */
+const WALK_PAGE_SIZE = 100;
 
 function list(value: unknown): Json[] {
   return Array.isArray(value) ? (value as Json[]) : [];
 }
 
+/** The database's first data source that has a done field. */
 async function openDatabase(token: string, id: string, alive: Alive): Promise<{ database: Database; title: string }> {
   check(alive);
   const db = await call(token, "GET", `databases/${id}`);
-  const first = list(db.data_sources)[0];
-  if (!first || typeof first.id !== "string") throw new NoDoneFieldError("database has no data source");
-  check(alive);
-  const schema = readSchema(await call(token, "GET", `data_sources/${first.id}`));
-  if (!schema) throw new NoDoneFieldError("no checkbox or status property");
-  return { database: { dataSourceId: first.id, schema }, title: plainText(db.title) };
+  for (const source of list(db.data_sources).slice(0, MAX_SOURCES)) {
+    if (typeof source.id !== "string") continue;
+    check(alive);
+    const schema = readSchema(await call(token, "GET", `data_sources/${source.id}`));
+    if (schema) return { database: { dataSourceId: source.id, schema }, title: plainText(db.title) };
+  }
+  throw new NoDoneFieldError("no checkbox, status or done select");
 }
 
 async function readPage(token: string, id: string, alive: Alive): Promise<Entry[]> {
-  let entries: Entry[] = [];
-  let cursor = "";
-  for (let i = 0; i < MAX_BLOCK_PAGES; i += 1) {
-    const query = `page_size=${BLOCKS_PER_PAGE}${cursor ? `&start_cursor=${cursor}` : ""}`;
-    check(alive);
-    const response = await call(token, "GET", `blocks/${id}/children?${query}`);
-    entries = entries.concat(entriesFromBlocks(response));
-    if (response.has_more !== true || typeof response.next_cursor !== "string") break;
-    cursor = response.next_cursor;
-  }
-  return entries;
+  check(alive);
+  const response = await call(token, "GET", `pages/${id}/markdown?markdown_version=v2`);
+  return entriesFromMarkdown(id, typeof response.markdown === "string" ? response.markdown : "");
 }
 
 /**
- * The API has no call for the sidebar, so the top-level pages are picked out
- * of a search, a few requests deep. Sorted by title: the sidebar's own order
- * is not in the API either.
+ * The API has no call for the sidebar, so the top level is picked out of
+ * searches: pages under the workspace, then databases under it. Sorted by
+ * title: the sidebar's own order is not in the API either.
  */
 async function readRoot(token: string, alive: Alive): Promise<Entry[]> {
   let found: ReturnType<typeof foundInSearch> = [];
   let cursor = "";
   let searchedAll = false;
-  for (let i = 0; i < MAX_SEARCH_PAGES; i += 1) {
+  for (let i = 0; i < MAX_PAGE_SEARCHES; i += 1) {
     const body: Json = { filter: { property: "object", value: "page" }, page_size: SEARCH_PER_PAGE };
     if (cursor) body.start_cursor = cursor;
     check(alive);
@@ -107,7 +107,26 @@ async function readRoot(token: string, alive: Alive): Promise<Entry[]> {
     }
     cursor = response.next_cursor;
   }
-  return pickRoots(found, searchedAll).sort((a, b) => (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
+  const roots = pickRoots(found, searchedAll);
+
+  cursor = "";
+  for (let i = 0; i < MAX_DATABASE_SEARCHES; i += 1) {
+    const body: Json = { filter: { property: "object", value: "data_source" }, page_size: DATABASES_PER_SEARCH };
+    if (cursor) body.start_cursor = cursor;
+    check(alive);
+    const response = await call(token, "POST", "search", body);
+    for (const source of list(response.results)) {
+      const parent = (source.parent ?? {}) as Json;
+      const dbParent = (source.database_parent ?? {}) as Json;
+      const id = typeof parent.database_id === "string" ? parent.database_id : "";
+      if (id && dbParent.type === "workspace" && !roots.some((e) => e.id === id)) {
+        roots.push({ kind: "database", id, title: plainText(source.title) || "Untitled" });
+      }
+    }
+    if (response.has_more !== true || typeof response.next_cursor !== "string") break;
+    cursor = response.next_cursor;
+  }
+  return roots.sort((a, b) => (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
 }
 
 /**
@@ -160,9 +179,89 @@ export async function readView(
   return { entries: openFirst(tasksFromQuery(response, database.schema)), view: resolved, database };
 }
 
+// ---- Finding a to-do's block ----------------------------------------------
+
+interface Walk {
+  readonly ids: string[];
+  readonly texts: string[];
+}
+
+/** Per page, the to-dos' block ids and texts in the markdown's order, as far as they were walked. */
+const walks = new Map<string, Walk>();
+const MAX_WALKS = 4;
+
+/**
+ * Walks a page's blocks depth first, in the order the markdown lists them, and
+ * collects its to-dos. Only blocks with children are looked into.
+ */
+async function walk(token: string, page: string): Promise<Walk> {
+  const ids: string[] = [];
+  const texts: string[] = [];
+  const visit = async (blockId: string): Promise<void> => {
+    let cursor = "";
+    do {
+      const query = `page_size=${WALK_PAGE_SIZE}${cursor ? `&start_cursor=${cursor}` : ""}`;
+      const response = await call(token, "GET", `blocks/${blockId}/children?${query}`);
+      for (const block of walkedBlocks(response)) {
+        if (block.todo !== null) {
+          ids.push(block.id);
+          texts.push(block.todo);
+        }
+        if (block.descend) await visit(block.id);
+      }
+      cursor = response.has_more === true && typeof response.next_cursor === "string" ? response.next_cursor : "";
+    } while (cursor);
+  };
+  await visit(page);
+  return { ids, texts };
+}
+
+/** The block id of a to-do read from markdown: the page is walked once, then remembered. */
+async function todoBlock(token: string, task: Entry): Promise<string> {
+  const page = task.page ?? "";
+  const index = task.index ?? -1;
+  const found = (w: Walk | undefined) => (w && index < w.ids.length && sameText(w.texts[index], task.title) ? w.ids[index] : "");
+  const known = found(walks.get(page));
+  if (known) return known;
+  const fresh = await walk(token, page);
+  walks.delete(page);
+  walks.set(page, fresh);
+  if (walks.size > MAX_WALKS) {
+    const oldest = walks.keys().next().value;
+    if (oldest !== undefined) walks.delete(oldest);
+  }
+  const id = found(fresh);
+  if (!id) throw new MovedError("the page changed");
+  return id;
+}
+
+/**
+ * Ticks a to-do by editing its line in the page's markdown: one request, and
+ * Notion keeps the block. False when Notion finds no single such line.
+ */
+async function tickByLine(token: string, task: Entry, done: boolean): Promise<boolean> {
+  // The line as it is now, whatever it was when read: the bar may have ticked it since.
+  const text = (task.line ?? "").substring(6);
+  const update = { old_str: (done ? "- [ ] " : "- [x] ") + text, new_str: (done ? "- [x] " : "- [ ] ") + text };
+  try {
+    await call(token, "PATCH", `pages/${task.page}/markdown`, {
+      markdown_version: "v2",
+      type: "update_content",
+      update_content: { content_updates: [update] },
+    });
+    return true;
+  } catch (err) {
+    // No match, or more than one: the page changed since it was read, or it is a synced copy.
+    if (err instanceof NotionError && err.status === 400) return false;
+    throw err;
+  }
+}
+
 /** Ticks a task off in Notion, or back on. */
 export async function setDone(token: string, task: Entry, database: Database | null, done: boolean): Promise<void> {
-  const update = setDoneCall(task, database, done);
+  if (task.kind === "todo" && task.page && task.line && (await tickByLine(token, task, done))) return;
+  const blockId = task.kind === "todo" && task.page ? await todoBlock(token, task) : task.id;
+  const update = setDoneCall(task, database, done, blockId);
   if (!update) throw new Error("not a task");
   await call(token, "PATCH", update.path, update.body);
 }

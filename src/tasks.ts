@@ -2,7 +2,7 @@
  * What the app shows of Notion, and how a task is closed.
  *
  * The bar browses Notion like its sidebar: a page lists its subpages, the
- * databases inside it and its to-dos, in the page's own order. A database
+ * databases inside it and its to-dos, in the page's own order (`markdown.ts`). A database
  * lists its open rows due today or earlier, then the ones closed today.
  * Subpages and databases open; tasks tick off and back on, as in Notion.
  *
@@ -25,6 +25,14 @@ export type DoneField =
       readonly openNames: readonly string[];
       /** The option a task goes back to when it is reopened. */
       readonly openTo: string;
+    }
+  | {
+      readonly kind: "select";
+      readonly id: string;
+      /** The option that means done. */
+      readonly doneName: string;
+      /** The option a task goes back to when it is reopened; null leaves it empty. */
+      readonly openTo: string | null;
     };
 
 export interface Schema {
@@ -51,13 +59,18 @@ export interface Entry {
   readonly title: string;
   /** For a task: ticked off. */
   readonly done?: boolean;
+  /** For a to-do read from a page's markdown: the page, and its place among the page's to-dos. */
+  readonly page?: string;
+  readonly index?: number;
+  /** Its markdown line, `- [ ] ...`, when no other line of the page contains it: then it can be ticked by text. */
+  readonly line?: string;
 }
 
 /** Which tasks a database list shows. */
 export type Scope = "today" | "all";
 
 /** A title longer than this cannot be read on 72 px anyway, and only costs memory. */
-const MAX_TITLE = 80;
+export const MAX_TITLE = 80;
 
 // Russian names next to the English ones, written as escapes to keep the source ASCII:
 // "done", "made", "completed"; below, "deadline", "date" and "done", "finished".
@@ -88,7 +101,8 @@ export function plainText(richText: unknown): string {
 /**
  * Picks the title, the done field and the due date from a data source's
  * properties. A checkbox named like "Done" wins, then a status property, then
- * any checkbox. Returns null when nothing can mark a task done.
+ * a select with an option named like "Done", then any checkbox. Returns null
+ * when nothing can mark a task done.
  */
 export function readSchema(dataSource: Json): Schema | null {
   const props = record(dataSource.properties);
@@ -96,6 +110,7 @@ export function readSchema(dataSource: Json): Schema | null {
   let namedCheckbox = "";
   let anyCheckbox = "";
   let status: DoneField | null = null;
+  let select: DoneField | null = null;
   let dateId: string | null = null;
   let dueDateId: string | null = null;
 
@@ -125,12 +140,17 @@ export function readSchema(dataSource: Json): Schema | null {
       const openTo = openNames.indexOf(fallback) >= 0 ? fallback : openNames[0];
       if (doneNames.length > 0 && openTo) status = { kind: "status", id, doneNames, closeTo: doneNames[0], openNames, openTo };
     }
+    if (type === "select" && select === null) {
+      const names = list(record(prop.select).options).map((o) => str(record(o).name));
+      const doneName = names.find((n) => DONE_NAMES.indexOf(n.toLowerCase()) >= 0);
+      if (doneName) select = { kind: "select", id, doneName, openTo: names.find((n) => n !== doneName) ?? null };
+    }
   }
 
   if (!titleId) return null;
   const done: DoneField | null = namedCheckbox
     ? { kind: "checkbox", id: namedCheckbox }
-    : status ?? (anyCheckbox ? { kind: "checkbox", id: anyCheckbox } : null);
+    : status ?? select ?? (anyCheckbox ? { kind: "checkbox", id: anyCheckbox } : null);
   if (!done) return null;
   return { titleId, done, dateId: dueDateId ?? dateId };
 }
@@ -156,6 +176,7 @@ export const PAGE_SIZE = 20;
 /** Filters that hold for open rows, or for done ones. A status needs one per option, since a filter cannot nest deeper. */
 function doneFilters(field: DoneField, done: boolean): Json[] {
   if (field.kind === "checkbox") return [{ property: field.id, checkbox: { equals: done } }];
+  if (field.kind === "select") return [{ property: field.id, select: done ? { equals: field.doneName } : { does_not_equal: field.doneName } }];
   const names = done ? field.openNames : field.doneNames;
   return names.map((name) => ({ property: field.id, status: { does_not_equal: name } }));
 }
@@ -204,36 +225,41 @@ export function tasksFromQuery(response: Json, schema: Schema): Entry[] {
     if (page.object !== "page" || page.in_trash === true) continue;
     const title = plainText(propertyById(page, schema.titleId).title) || "Untitled";
     const field = propertyById(page, schema.done.id);
-    const done = schema.done.kind === "checkbox"
+    const f = schema.done;
+    const done = f.kind === "checkbox"
       ? field.checkbox === true
-      : schema.done.doneNames.indexOf(str(record(field.status).name)) >= 0;
+      : f.kind === "select"
+        ? str(record(field.select).name) === f.doneName
+        : f.doneNames.indexOf(str(record(field.status).name)) >= 0;
     tasks.push({ kind: "row", id: str(page.id), title, done });
   }
   return tasks;
 }
 
+/** A block met while looking for a to-do's id: its own id, a to-do's text, and whether to look inside it. */
+export interface Walked {
+  readonly id: string;
+  /** The to-do's text; null for any other block. */
+  readonly todo: string | null;
+  readonly descend: boolean;
+}
+
 /**
- * What one page of a page's blocks adds to the screen: subpages, databases and
- * to-dos, ticked or not, in order. Nested blocks are not read: a to-do inside a
- * toggle stays hidden.
+ * One page of a block's children, for finding to-dos' ids in the order the
+ * markdown lists them. Subpages and databases are not looked into: their
+ * contents are not on this page.
  */
-export function entriesFromBlocks(response: Json): Entry[] {
-  const entries: Entry[] = [];
+export function walkedBlocks(response: Json): Walked[] {
+  const out: Walked[] = [];
   for (const item of list(response.results)) {
     const block = record(item);
-    if (block.in_trash === true) continue;
+    const type = str(block.type);
     const id = str(block.id);
-    if (block.type === "child_page") {
-      entries.push({ kind: "page", id, title: str(record(block.child_page).title).trim() || "Untitled" });
-    } else if (block.type === "child_database") {
-      entries.push({ kind: "database", id, title: str(record(block.child_database).title).trim() || "Untitled" });
-    } else if (block.type === "to_do") {
-      const todo = record(block.to_do);
-      const title = plainText(todo.rich_text);
-      if (title) entries.push({ kind: "todo", id, title, done: todo.checked === true });
-    }
+    const todo = type === "to_do" ? plainText(record(block.to_do).rich_text) : null;
+    const descend = block.has_children === true && type !== "child_page" && type !== "child_database";
+    out.push({ id, todo, descend });
   }
-  return entries;
+  return out;
 }
 
 /** The title of a page object, from whichever property is the title. */
@@ -275,28 +301,34 @@ export function foundInSearch(response: Json): Found[] {
  * The top level, as the sidebar shows it: pages under the workspace. An
  * internal connection may be shared with a page deeper down; its parent is
  * then out of reach and never in the results. When the search was read to its
- * end, such pages count as top level too. Database rows never do.
+ * end, such pages count as top level too. Database rows never do, nor pages
+ * inside a toggle or a column: their page shows them.
  */
 export function pickRoots(found: readonly Found[], searchedAll: boolean): Entry[] {
   const ids = new Set(found.map((f) => f.entry.id));
   const roots: Entry[] = [];
   for (const f of found) {
     if (f.parentType === "workspace") roots.push(f.entry);
-    else if (searchedAll && (f.parentType === "page_id" || f.parentType === "block_id") && !ids.has(f.parentId)) {
+    else if (searchedAll && f.parentType === "page_id" && !ids.has(f.parentId)) {
       roots.push(f.entry);
     }
   }
   return roots;
 }
 
-/** The call that ticks a task off, or back on when `done` is false. */
-export function setDoneCall(task: Entry, database: Database | null, done: boolean): { path: string; body: Json } | null {
-  if (task.kind === "todo") return { path: `blocks/${task.id}`, body: { to_do: { checked: done } } };
+/**
+ * The call that ticks a task off, or back on when `done` is false. A to-do
+ * read from markdown needs its block id, found by `source.ts`.
+ */
+export function setDoneCall(task: Entry, database: Database | null, done: boolean, blockId = task.id): { path: string; body: Json } | null {
+  if (task.kind === "todo") return { path: `blocks/${blockId}`, body: { to_do: { checked: done } } };
   if (task.kind !== "row" || !database) return null;
   const field = database.schema.done;
   const value = field.kind === "checkbox"
     ? { checkbox: done }
-    : { status: { name: done ? field.closeTo : field.openTo } };
+    : field.kind === "select"
+      ? { select: done ? { name: field.doneName } : field.openTo === null ? null : { name: field.openTo } }
+      : { status: { name: done ? field.closeTo : field.openTo } };
   return { path: `pages/${task.id}`, body: { properties: { [field.id]: value } } };
 }
 
