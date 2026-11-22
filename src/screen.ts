@@ -65,9 +65,13 @@ const MARKS: Record<string, readonly string[]> = {
   chevron: ["#  ", " # ", "  #", " # ", "#  "],
 };
 
-/** Elements by what they are made of; cleared when it grows, which only costs rebuilding them. */
+/**
+ * Elements by what they are made of; cleared when it grows, which only costs
+ * rebuilding them. Kept small: the app's whole heap is 256 KiB, and a frame and
+ * its two neighbours need about 30 elements.
+ */
 const made = new Map<string, Element>();
-const MAX_MADE = 400;
+const MAX_MADE = 60;
 
 function remember(key: string, make: () => Element): Element {
   const known = made.get(key);
@@ -238,7 +242,7 @@ export function listFrame(
  * is drawn: turning the wheel brings back lines already built, at a lookup each.
  */
 const linesMade = new Map<Entry, Map<string, Element[]>>();
-const MAX_LINES = 120;
+const MAX_LINES = 24;
 
 function lineOf(entry: Entry, slot: number, y: number, focused: boolean, done: boolean, open: boolean, logo: boolean): Element[] {
   let made = linesMade.get(entry);

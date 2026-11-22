@@ -24,7 +24,7 @@ async function send(method: "POST" | "DELETE", body: string): Promise<void> {
  * as in the last one, and serialising on the bar is slow. Cleared when it grows.
  */
 const json = new Map<object, string>();
-const MAX_JSON = 300;
+const MAX_JSON = 60;
 
 /** Serialises elements ahead of time, while the user is idle, so drawing them later is only the request. */
 export function prepare(elements: readonly object[]): void {

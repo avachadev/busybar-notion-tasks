@@ -317,7 +317,7 @@ function main(): void {
           dirty = false;
           redraw();
         } else if (readyTimer === undefined) {
-          readyTimer = setTimeout(getReady, 0);
+          readyTimer = setTimeout(guarded("prepare", getReady), 0);
         }
       });
   }
@@ -515,10 +515,10 @@ function main(): void {
     const at = loaded ? Math.max(nextReadAt, lastInputAt + QUIET_MS) : nextReadAt;
     if (now < at) {
       if (readTimer !== undefined) clearTimeout(readTimer);
-      readTimer = setTimeout(() => {
+      readTimer = setTimeout(guarded("read", () => {
         readTimer = undefined;
         maybeRead();
-      }, at - now);
+      }), at - now);
       return;
     }
     reading = true;
@@ -580,7 +580,7 @@ function main(): void {
         if (ticks.get(id) !== t) return;
         t.tries += 1;
         if (!stopped && worthRetry(err) && t.tries < TICK_TRIES) {
-          t.timer = setTimeout(() => attempt(id, t), TICK_RETRY_MS * t.tries);
+          t.timer = setTimeout(guarded("tick", () => attempt(id, t)), TICK_RETRY_MS * t.tries);
           return;
         }
         report("tick", err);
@@ -683,7 +683,7 @@ function main(): void {
     } else {
       const id = entry.id;
       const tick = newTick(entry, database, token, done);
-      tick.timer = setTimeout(() => send(id), UNDO_MS);
+      tick.timer = setTimeout(guarded("tick", () => send(id)), UNDO_MS);
       ticks.set(id, tick);
     }
     if (done && !(t && t.stage === "waiting")) celebrate();
@@ -727,13 +727,22 @@ function main(): void {
     setTimeout(unbind, 0);
   }
 
-  const unbind = listen("input", (event) => {
+  /** Runs a handler so that an error in it is reported and the app goes on: an uncaught one ends the app. */
+  const guarded = (where: string, work: () => void) => () => {
+    try {
+      work();
+    } catch (err) {
+      report(where, err);
+    }
+  };
+
+  const unbind = listen("input", (event) => guarded("input", () => {
     lastInputAt = Date.now();
     if (event.key === "encoder") move(event.delta);
     // Start, the big button on top, does what OK does: it is the easier one to reach.
     else if ((event.key === "ok" || event.key === "start") && event.action === "short") activate();
     else if (event.key === "back" && event.action === "short") up();
-  });
+  })());
 
   // ---- Loop ----------------------------------------------------------------
 
