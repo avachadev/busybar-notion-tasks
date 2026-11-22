@@ -539,3 +539,38 @@ export function openFirst(entries: readonly Entry[]): Entry[] {
 export function isTask(entry: Entry): boolean {
   return entry.kind === "todo" || entry.kind === "row";
 }
+
+function sameList(a: readonly string[] | undefined, b: readonly string[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** Whether two entries show and act the same: every field compared. */
+export function sameEntry(a: Entry, b: Entry): boolean {
+  return a.kind === b.kind && a.id === b.id && a.title === b.title && a.done === b.done && a.page === b.page &&
+    a.index === b.index && a.line === b.line && a.depth === b.depth && a.count === b.count && a.tag === b.tag &&
+    a.color === b.color && a.link === b.link && a.icon === b.icon && sameList(a.toggles, b.toggles);
+}
+
+/**
+ * A fresh read with the old entries kept where nothing in them changed, and
+ * the old list itself when nothing did: the lines built for them, the list on
+ * screen and the saved place all stay as they are. A refresh every few
+ * seconds that finds nothing new then costs a pass of compares, not a rebuild.
+ */
+export function reuseEntries(old: readonly Entry[], fresh: readonly Entry[]): Entry[] {
+  const byId: Record<string, Entry> = {};
+  for (let i = 0; i < old.length; i += 1) byId[old[i].id] = old[i];
+  const out: Entry[] = [];
+  let same = old.length === fresh.length;
+  for (let i = 0; i < fresh.length; i += 1) {
+    const f = fresh[i];
+    const o = byId[f.id];
+    const kept = o !== undefined && sameEntry(o, f) ? o : f;
+    if (kept !== old[i]) same = false;
+    out.push(kept);
+  }
+  return same ? (old as Entry[]) : out;
+}

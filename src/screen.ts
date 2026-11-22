@@ -14,6 +14,8 @@
 
 import type { DisplayDrawParams } from "@busy-app/busy-lib";
 
+import { focusable } from "./focus.ts";
+
 import {
   CHECKBOX_INSET_X,
   CHECKBOX_INSET_Y,
@@ -70,6 +72,7 @@ import {
   listX,
   printable,
   tagLook,
+  fitLength,
   textWidth,
 } from "./layout.ts";
 import { emojiIcon } from "./emoji.ts";
@@ -112,20 +115,30 @@ export const isTagRow = (e: Entry): boolean => e.kind === "row" && e.tag !== und
 export const opens = (e: Entry): boolean => e.kind === "row" || (e.kind === "todo" && !!e.link);
 
 /**
- * Elements by what they are made of; cleared when it grows, which only costs
- * rebuilding them. Kept small: the app's whole heap is 384 KiB, and a frame and
- * its two neighbours need about 30 elements.
+ * Elements by what they are made of, the least lately used given up first: a
+ * frame and its two neighbours need 45-60 of them, and emptying the whole map
+ * when it filled rebuilt (and sent again) a frame's worth every step or two.
  */
 const made = new Map<string, Element>();
-const MAX_MADE = 60;
+const MAX_MADE = 120;
 
 function remember(key: string, make: () => Element): Element {
   const known = made.get(key);
-  if (known) return known;
-  if (made.size >= MAX_MADE) made.clear();
+  if (known) {
+    made.delete(key);
+    made.set(key, known);
+    return known;
+  }
+  if (made.size >= MAX_MADE) dropOldest(made);
   const element = make();
   made.set(key, element);
   return element;
+}
+
+/** Removes a map's least lately used key: maps keep the order keys were set in. */
+export function dropOldest<K, V>(map: Map<K, V>): void {
+  const oldest = map.keys().next();
+  if (!oldest.done) map.delete(oldest.value);
 }
 
 function image(id: string, x: number, y: number, path: string, z: number): Element {
@@ -220,17 +233,10 @@ function icon(): Element {
   return image("icon", ICON_X, ICON_Y, IMAGES.icon, 5);
 }
 
-/** The longest start of `value` that fits `width` px: halving, not a character at a time. */
+/** The longest start of `value` that fits `width` px. */
 export function fit(value: string, width: number): string {
-  if (textWidth(value) <= width) return value;
-  let lo = 0;
-  let hi = value.length;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (textWidth(value.substring(0, mid)) <= width) lo = mid;
-    else hi = mid - 1;
-  }
-  return value.substring(0, lo);
+  const n = fitLength(value, width);
+  return n === value.length ? value : value.substring(0, n);
 }
 
 /** Which tasks are ticked off, in Notion or on their way there: ids, or a test asked of the lines on screen only. */
@@ -310,7 +316,7 @@ function places(lines: readonly Entry[]): { at: number[]; count: number } {
     let count = 0;
     for (let i = 0; i < lines.length; i += 1) {
       at.push(count);
-      if (lines[i].kind !== "heading") count += 1;
+      if (focusable(lines[i])) count += 1;
     }
     placesFor = { lines, at, count };
   }
@@ -357,8 +363,11 @@ const MAX_LINES = 24;
 
 function lineOf(entry: Entry, slot: number, y: number, focused: boolean, done: boolean, open: boolean, logo: boolean, focus: Focus): Element[] {
   let made = linesMade.get(entry);
-  if (!made) {
-    if (linesMade.size >= MAX_LINES) linesMade.clear();
+  if (made) {
+    linesMade.delete(entry);
+    linesMade.set(entry, made);
+  } else {
+    if (linesMade.size >= MAX_LINES) dropOldest(linesMade);
     made = new Map();
     linesMade.set(entry, made);
   }
@@ -437,8 +446,9 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
     const room = (entry.count ? countX - 1 : LIST_RIGHT) - textX;
     out.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, ink, room));
   } else {
-    // A heading is never focused: grey, as any line without a plate away from the focus.
-    out.push(line(`text${slot}`, x0 + 1, y + TEXT_INSET_Y, entry.title, TEXT_EDGE, LIST_RIGHT - x0 - 1));
+    // A heading is never focused: grey, as any line without a plate away from the focus. The line
+    // that says the page was cut is, so it can be read: white there.
+    out.push(line(`text${slot}`, x0 + 1, y + TEXT_INSET_Y, entry.title, focused ? TEXT_IDLE : TEXT_EDGE, LIST_RIGHT - x0 - 1));
   }
   return out;
 }

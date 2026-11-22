@@ -314,3 +314,22 @@ test("a row's emoji icon comes with it; a picture icon does not", () => {
   assert.equal(rows[0].icon, "\u{1f3af}");
   assert.equal(rows[1].icon, undefined);
 });
+
+test("a read with nothing new gives back the old list itself; a changed entry alone is new", async () => {
+  const { reuseEntries } = await import("../src/tasks.ts");
+  const old = [
+    { kind: "todo" as const, id: "a", title: "A", done: false, toggles: ["t"] },
+    { kind: "page" as const, id: "b", title: "B" },
+  ];
+  const same = [{ ...old[0], toggles: ["t"] }, { ...old[1] }];
+  assert.equal(reuseEntries(old, same), old);
+  const ticked = [{ ...old[0], done: true }, { ...old[1] }];
+  const out = reuseEntries(old, ticked);
+  assert.notEqual(out, old);
+  assert.notEqual(out[0], old[0]);
+  assert.equal(out[1], old[1]);
+  // Reordered: the entries are kept, the list is new.
+  const moved = reuseEntries(old, [{ ...old[1] }, { ...old[0], toggles: ["t"] }]);
+  assert.notEqual(moved, old);
+  assert.deepEqual([moved[0] === old[1], moved[1] === old[0]], [true, true]);
+});

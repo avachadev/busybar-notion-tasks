@@ -84,7 +84,8 @@ A scrollbar in the rightmost column shows where the focus is in the list, as in 
 a dim track and a white thumb, 1 px wide. The list stops 1 px short of it.
 
 A page or a database whose icon in Notion is an emoji shows it in its mark's place, 7x7 pixels, on the
-top level, in a database's rows and on the screen that opens it; dimmed when it is not focused. A
+top level, in the rows of a database shown as pages and on the screen that opens it; dimmed when it is not
+focused. A task row keeps its checkbox or its status there. A
 subpage on a page keeps the sheet: its icon is not in the page's text, and asking for it would cost a
 request a subpage. An uploaded or linked picture cannot be drawn on the bar and keeps the mark too.
 
@@ -179,8 +180,10 @@ curl -X DELETE "http://10.0.4.20/api/storage/remove?path=/ext/apps_data/jsrunner
 
 ## Limits
 
-- Notion's API has no call for the sidebar, so the top level is picked out of searches of up to 100
-  pages and 30 databases. In a large workspace some may be missing; set a **Start page** then.
+- Notion's API has no call for the sidebar, so the top level is found by searching: with a personal
+  token the whole workspace, in the background (a few minutes for thousands of pages, then once a day);
+  with an internal connection the first 100 pages and 100 databases shared with it.
+- A page shows its first 100 lines; a longer one ends with the line *More in Notion*.
 - A page is read in one request, as Notion's markdown. A to-do whose text appears once on the page is
   ticked in one request too. One whose text repeats, or that sits in a synced block copied from another
   page, needs the page's blocks walked first: on a page with many toggles the first such tick takes

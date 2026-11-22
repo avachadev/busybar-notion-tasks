@@ -29,7 +29,7 @@ import { NotionError, wireIdle } from "./notion.ts";
 import { forgetRoots, Roots } from "./roots.ts";
 import { type Element, type Focus, isTagRow, lineLeft, listFrame, loadingFrame, messageFrame as message, opens, previewFrame } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
-import { type Database, type Entry, type Option, isTask, mergeRoots, optionOf } from "./tasks.ts";
+import { type Database, type Entry, type Option, isTask, mergeRoots, optionOf, reuseEntries } from "./tasks.ts";
 
 /** The name the app draws under; the device clears elements by this id. */
 const APP = manifest.id;
@@ -678,9 +678,12 @@ function main(): void {
       }
       const keepId = shown()[selected]?.id;
       const wasAt = selected;
+      // Nothing new: the same list, so nothing downstream is built or saved again.
+      const next = reuseEntries(entries, fresh);
+      const changed = next !== entries || stack[stack.length - 1] !== result.view || database !== result.database;
       stack[stack.length - 1] = result.view;
       if (result.view.kind === "page" || result.view.kind === "database") kinds.set(result.view.id, result.view.kind);
-      entries = fresh;
+      entries = next;
       database = result.database;
       selectById(keepId);
       // A row ticked off goes below the open ones in the app's own order: the focus stays where it was,
@@ -702,8 +705,10 @@ function main(): void {
       // A view that takes long to read is read again less often, so reading does not take the bar over.
       // The kept top level is checked as often as any view; for it a slow read is the checks' own pace, not a reason to wait longer.
       nextReadAt = kept ? now + REFRESH_MS : now + Math.max(view.kind === "root" ? ROOT_CHECK_MS : REFRESH_MS, (now - startedAt) * SLOW_READ_FACTOR);
-      keep(result.view, { entries, database, focus: focused() });
-      persist();
+      if (changed) {
+        keep(result.view, { entries, database, focus: focused() });
+        persist();
+      }
     } catch (err) {
       if (!still()) return;
       if (failures === 0) report("read", err);
@@ -1014,7 +1019,8 @@ function main(): void {
     const token = config?.token;
     if (!loaded || !token) return;
     const entry = shown()[selected];
-    if (!entry || !focusable(entry)) return;
+    // The line that says the page was cut only says so: OK there does nothing.
+    if (!entry || !focusable(entry) || entry.kind === "heading") return;
     if (picking && picking.id === entry.id) {
       const option = options()[picking.index];
       dropPointing();

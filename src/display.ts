@@ -21,10 +21,10 @@ async function send(method: "POST" | "DELETE", body: string): Promise<void> {
 
 /**
  * Each element's JSON, made once: most elements of a frame are the same objects
- * as in the last one, and serialising on the bar is slow. Cleared when it grows.
+ * as in the last one, and serialising on the bar is slow. The least lately used goes when it is full.
  */
 const json = new Map<object, string>();
-const MAX_JSON = 60;
+const MAX_JSON = 80;
 
 /** Serialises elements ahead of time, while the user is idle, so drawing them later is only the request. */
 export function prepare(elements: readonly object[]): void {
@@ -34,10 +34,16 @@ export function prepare(elements: readonly object[]): void {
 function jsonOf(element: object): string {
   let text = json.get(element);
   if (text === undefined) {
-    if (json.size >= MAX_JSON) json.clear();
+    // The least lately used goes: emptying the map re-serialised a whole frame every few steps.
+    if (json.size >= MAX_JSON) {
+      const oldest = json.keys().next();
+      if (!oldest.done) json.delete(oldest.value);
+    }
     text = JSON.stringify(element);
-    json.set(element, text);
+  } else {
+    json.delete(element);
   }
+  json.set(element, text);
   return text;
 }
 

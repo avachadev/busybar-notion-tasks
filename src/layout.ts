@@ -246,7 +246,45 @@ export function printable(text: string): string {
   return out.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Each character's width, measured once. busy-lib's `textWidth` looks every
+ * character up in its runs and keeps each whole string it was asked about, up
+ * to 512 of them: on the bar that cost 25-40 ms a line and some 40 KB of heap,
+ * most of it for the prefixes `fit` tried.
+ */
+const widthOf: Record<number, number> = {};
+
+function charWidth(text: string, i: number): number {
+  const c = text.charCodeAt(i);
+  const known = widthOf[c];
+  if (known !== undefined) return known;
+  // A surrogate pair is measured whole and not kept: the font has no such characters.
+  if (c >= 0xd800 && c <= 0xdbff) return measure(text.substring(i, i + 2), FONT);
+  const w = measure(String.fromCharCode(c), FONT);
+  widthOf[c] = w;
+  return w;
+}
+
 /** Width of `text` in the app's font, in pixels. */
 export function textWidth(text: string): number {
-  return measure(text, FONT);
+  let w = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text.charCodeAt(i);
+    w += charWidth(text, i);
+    if (c >= 0xd800 && c <= 0xdbff) i += 1;
+  }
+  return w;
+}
+
+/** How many characters of `text` fit `width` px, in one pass. */
+export function fitLength(text: string, width: number): number {
+  let w = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text.charCodeAt(i);
+    const pair = c >= 0xd800 && c <= 0xdbff ? 2 : 1;
+    w += charWidth(text, i);
+    if (w > width) return i;
+    i += pair - 1;
+  }
+  return text.length;
 }

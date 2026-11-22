@@ -1,11 +1,15 @@
 /**
  * Where the focus may stand in a list: on anything but a heading, which only
- * names a part of the page. Pure, so it is tested off the device.
+ * names a part of the page; but on the line that says a page was cut, so the
+ * wheel stops there and it can be read. Pure, so it is tested off the device.
  */
 
 import type { Entry } from "./tasks.ts";
 
-export const focusable = (e: Entry | undefined): boolean => e !== undefined && e.kind !== "heading";
+/** The line a page cut at MAX_ENTRIES ends with (`PageReader.finish`). */
+export const isMore = (e: Entry): boolean => e.kind === "heading" && e.id.slice(-5) === "/more";
+
+export const focusable = (e: Entry | undefined): boolean => e !== undefined && (e.kind !== "heading" || isMore(e));
 
 /** The next focusable line from `from` in the wheel's direction; `from` when there is none that way. */
 export function step(list: readonly Entry[], from: number, delta: number): number {
