@@ -25,7 +25,8 @@ test("a read of a view the user has left stops at its next request", async () =>
     return now;
   });
   await assert.rejects(reading, CancelledError);
-  assert.equal(notion.calls.length, 1);
+  // The queue asks again when the request's turn comes: by then the user has left, and nothing is sent.
+  assert.equal(notion.calls.length, 0);
 });
 
 test("a page is one markdown request", async () => {
@@ -126,7 +127,7 @@ test("a timed-out call keeps the next one off the wire until it has finished", a
     return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
   }) as typeof fetch;
   // The first caller gives up after 10 ms; its request is still out.
-  await assert.rejects(call("t", "GET", "a", undefined, 10), /timeout/);
+  await assert.rejects(call("t", "GET", "a", undefined, { timeoutMs: 10 }), /timeout/);
   await call("t", "GET", "b");
   assert.equal(most, 1);
 });

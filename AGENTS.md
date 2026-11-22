@@ -50,7 +50,8 @@ off. What it does, its settings and its files: [README.md](README.md).
     restarts the whole bar; a 43 KB page read whole did that with a 256 KiB heap;
   - the heap is 384 KiB; a page is read as a stream (`stream.ts`) and never held whole, at most
     `MAX_ENTRIES` lines; neighbouring frames are not prepared while a read is out;
-  - a loop over bytes costs about 20-50 us a byte, `Uint8Array.indexOf` about 3 us a byte: only kept
+  - a loop over bytes costs about 20-50 us a byte, `Uint8Array.indexOf` 3.6 us a byte (one pass over a
+    94.6 KB answer: 342 ms, measured 22.11), so an answer is searched once, for a rare byte; only kept
     lines are decoded, ASCII natively; a regular expression run over a line costs about 0.3-3 ms;
   - a page with 120 subpages still takes several seconds to read: its first screen shows after 8
     lines (`FIRST_SCREEN`), and a slow view is read again no sooner than 3 times its read time.

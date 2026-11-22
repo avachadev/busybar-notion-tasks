@@ -1,7 +1,7 @@
 /** Reads what one screen of the app shows, and closes tasks. */
 
 import { PageReader, sameText } from "./markdown.ts";
-import { type Json, NotionError, call, stream } from "./notion.ts";
+import { DroppedError, type Json, type Turn, NotionError, WRITE, call, stream } from "./notion.ts";
 import { MarkdownLines } from "./stream.ts";
 import {
   type Database,
@@ -27,8 +27,11 @@ import {
 /** None of the database's data sources could be read as a list: no title property. */
 export class NoDoneFieldError extends Error {}
 
-/** The read was given up because the user left the view. */
-export class CancelledError extends Error {}
+/**
+ * The read was given up because the user left the view: before a request, or
+ * by the queue when the request's turn came (the same error, so one test fits both).
+ */
+export const CancelledError = DroppedError;
 
 /** A to-do's block was not where the page's markdown put it: the page changed meanwhile. */
 export class MovedError extends Error {}
@@ -39,6 +42,11 @@ export type Alive = () => boolean;
 function check(alive: Alive): void {
   if (!alive()) throw new CancelledError("left the view");
 }
+
+/** A read for the view on screen: dropped from the queue if the user has left by its turn. */
+const reading = (alive: Alive): Turn => ({ alive });
+/** A tick or a status: before anything else. */
+const writing: Turn = { priority: WRITE };
 
 /**
  * Where the user is. `root` is the top level; `start` is the page or database
@@ -85,12 +93,12 @@ function list(value: unknown): Json[] {
 async function firstView(token: string, id: string, alive: Alive): Promise<Json | null> {
   try {
     check(alive);
-    const views = await call(token, "GET", `views?database_id=${id}`);
+    const views = await call(token, "GET", `views?database_id=${id}`, undefined, reading(alive));
     const first = list(views.results)[0];
     const viewId = first && typeof first.id === "string" ? first.id : "";
     if (!viewId) return null;
     check(alive);
-    return await call(token, "GET", `views/${viewId}`);
+    return await call(token, "GET", `views/${viewId}`, undefined, reading(alive));
   } catch (err) {
     if (err instanceof NotionError && err.status !== 401 && err.status !== 429 && err.status < 500) return null;
     throw err;
@@ -103,7 +111,7 @@ async function firstView(token: string, id: string, alive: Alive): Promise<Json 
  */
 async function openDatabase(token: string, id: string, alive: Alive): Promise<{ database: Database; title: string }> {
   check(alive);
-  const db = await call(token, "GET", `databases/${id}`);
+  const db = await call(token, "GET", `databases/${id}`, undefined, reading(alive));
   const view = await firstView(token, id, alive);
   const info = view ? readViewInfo(view) : null;
   const viewSource = view && typeof view.data_source_id === "string" ? view.data_source_id : "";
@@ -114,7 +122,7 @@ async function openDatabase(token: string, id: string, alive: Alive): Promise<{ 
     const sourceId = source.id as string;
     const own = !viewSource || sourceId === viewSource;
     check(alive);
-    const schema = readSchema(await call(token, "GET", `data_sources/${sourceId}`), own ? info : null);
+    const schema = readSchema(await call(token, "GET", `data_sources/${sourceId}`, undefined, reading(alive)), own ? info : null);
     if (!schema) continue;
     const database: Database = { dataSourceId: sourceId, schema, sorts: own && info ? info.sorts : null };
     if (schema.done) return { database, title: plainText(db.title) };
@@ -141,7 +149,7 @@ async function readPage(token: string, id: string, alive: Alive, onFirst?: (entr
     // A page the user has left is not read on.
     return !reader.full && alive();
   });
-  await stream(token, `pages/${id}/markdown?markdown_version=v2`, (bytes) => lines.feed(bytes));
+  await stream(token, `pages/${id}/markdown?markdown_version=v2`, (bytes) => lines.feed(bytes), reading(alive));
   check(alive);
   lines.end();
   return reader.finish();
@@ -160,7 +168,7 @@ async function readRoot(token: string, alive: Alive): Promise<Entry[]> {
     const body: Json = { filter: { property: "object", value: "page" }, page_size: SEARCH_PER_PAGE };
     if (cursor) body.start_cursor = cursor;
     check(alive);
-    const response = await call(token, "POST", "search", body);
+    const response = await call(token, "POST", "search", body, reading(alive));
     found = found.concat(foundInSearch(response));
     if (response.has_more !== true || typeof response.next_cursor !== "string") {
       searchedAll = true;
@@ -175,7 +183,7 @@ async function readRoot(token: string, alive: Alive): Promise<Entry[]> {
     const body: Json = { filter: { property: "object", value: "data_source" }, page_size: DATABASES_PER_SEARCH };
     if (cursor) body.start_cursor = cursor;
     check(alive);
-    const response = await call(token, "POST", "search", body);
+    const response = await call(token, "POST", "search", body, reading(alive));
     for (const db of rootsInSearch(response)) if (!roots.some((e) => e.id === db.id)) roots.push(db);
     if (response.has_more !== true || typeof response.next_cursor !== "string") break;
     cursor = response.next_cursor;
@@ -195,7 +203,7 @@ export async function readRecentRoots(token: string, alive: Alive): Promise<Entr
   const response = await call(token, "POST", "search", {
     sort: { timestamp: "last_edited_time", direction: "descending" },
     page_size: RECENT,
-  });
+  }, reading(alive));
   return rootsInSearch(response);
 }
 
@@ -243,7 +251,7 @@ export async function readView(
   const body = queryBody(database.schema, scope, localDate(now), localDayStart(now), database.sorts);
   let response: Json;
   try {
-    response = await call(token, "POST", queryPath(database.dataSourceId, database.schema), body);
+    response = await call(token, "POST", queryPath(database.dataSourceId, database.schema), body, reading(alive));
   } catch (err) {
     // The database's properties changed or it moved: look it up again next time.
     if (err instanceof NotionError && (err.status === 400 || err.status === 404)) databases.delete(resolved.id);
@@ -276,7 +284,7 @@ async function walk(token: string, page: string): Promise<Walk> {
     let cursor = "";
     do {
       const query = `page_size=${WALK_PAGE_SIZE}${cursor ? `&start_cursor=${cursor}` : ""}`;
-      const response = await call(token, "GET", `blocks/${blockId}/children?${query}`);
+      const response = await call(token, "GET", `blocks/${blockId}/children?${query}`, undefined, writing);
       for (const block of walkedBlocks(response)) {
         if (block.todo !== null) {
           ids.push(block.id);
@@ -323,7 +331,7 @@ async function tickByLine(token: string, task: Entry, done: boolean): Promise<bo
       markdown_version: "v2",
       type: "update_content",
       update_content: { content_updates: [update] },
-    });
+    }, writing);
     return true;
   } catch (err) {
     // No match, or more than one: the page changed since it was read, or it is a synced copy.
@@ -338,5 +346,5 @@ export async function setDone(token: string, task: Entry, database: Database | n
   const blockId = task.kind === "todo" && task.page ? await todoBlock(token, task) : task.id;
   const update = setDoneCall(task, database, done, blockId, option);
   if (!update) throw new Error("not a task");
-  await call(token, "PATCH", update.path, update.body);
+  await call(token, "PATCH", update.path, update.body, writing);
 }
