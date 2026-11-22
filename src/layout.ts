@@ -109,8 +109,8 @@ export const CHEVRON_INSET_Y = 2;
 
 /**
  * A row with a status takes the whole screen in two lines: the title at
- * TAG_TITLE_X on the top line, the status as a tag on the bottom one (Figma,
- * "Вариант I"). The tag is a rectangle 7 px tall with the option's name 2 px in.
+ * TAG_TITLE_X on the top line, the status as a tag on the bottom one (as
+ * drawn in Figma). The tag is a rectangle 7 px tall with the option's name 2 px in.
  */
 export const TAG_TITLE_X = 5;
 export const TAG_X = 3;

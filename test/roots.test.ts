@@ -126,4 +126,6 @@ test("an internal connection is not swept: its top level is read the old way", a
   const roots = new Roots("me");
   assert.equal(await roots.whoami("t", always), true);
   assert.equal(roots.sweepDue(0), false);
+  // Nothing shared yet: the screen says so, it does not wait for a pass that never comes.
+  assert.equal(roots.searching, false);
 });

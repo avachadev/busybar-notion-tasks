@@ -71,11 +71,23 @@ function fresh(owner: string): Saved {
   return { owner, roots: [], phase: "page", cursor: null, doneAt: 0, next: 0, internal: null };
 }
 
+/** Removes the top level kept for another token, or for none when `owner` is "". */
+export function forgetRoots(owner: string): void {
+  try {
+    const raw = storage()?.getItem(KEY);
+    if (raw && (!owner || (JSON.parse(raw) as Partial<Saved>).owner !== owner)) storage()?.removeItem(KEY);
+  } catch {
+    storage()?.removeItem(KEY);
+  }
+}
+
 function load(owner: string): Saved {
   try {
     const raw = storage()?.getItem(KEY);
     const saved = raw ? (JSON.parse(raw) as Saved) : null;
     if (saved && saved.owner === owner && Array.isArray(saved.roots)) return saved;
+    // Another token's top level: its titles do not stay on the bar.
+    if (raw) storage()?.removeItem(KEY);
   } catch {
     // A broken record only costs a new sweep.
   }
@@ -98,9 +110,12 @@ export class Roots {
     return this.shown;
   }
 
-  /** Nothing found yet and the first pass not over: the screen says the app is looking. */
+  /**
+   * Nothing found yet and the first pass not over: the screen says the app is
+   * looking. An internal connection has no pass: its top level is read whole.
+   */
   get searching(): boolean {
-    return this.saved.roots.length === 0 && this.saved.doneAt === 0;
+    return this.saved.internal !== true && this.saved.roots.length === 0 && this.saved.doneAt === 0;
   }
 
   /** A sweep answer is due: a pass is under way, or the last one is old. Not for an internal connection. */

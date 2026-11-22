@@ -53,6 +53,25 @@ export function load(owner: string, home: string): Saved | null {
   }
 }
 
+/**
+ * Removes a place saved under another token, or under none when `owner` is "":
+ * the titles of a workspace the bar no longer reads do not stay on it.
+ */
+export function forgetOthers(owner: string): void {
+  try {
+    const store = storage();
+    const raw = store?.getItem(KEY);
+    if (!store || !raw) return;
+    const saved = JSON.parse(raw) as Partial<Saved>;
+    if (!owner || saved.owner !== owner) {
+      store.removeItem(KEY);
+      lastSaved = "";
+    }
+  } catch {
+    storage()?.removeItem(KEY);
+  }
+}
+
 let lastSaved = "";
 
 export function save(saved: Saved): void {

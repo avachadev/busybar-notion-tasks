@@ -94,7 +94,7 @@ test("a to-do whose line is unique is ticked by editing the page's markdown, els
     }
     const m = /blocks\/([^/]+)\/children/.exec(String(url));
     const body = m ? { results: [{ id: "b0", type: "to_do", to_do: { rich_text: [{ plain_text: "Pay rent" }] } }], has_more: false } : {};
-    return { ok: true, status: 200, json: async () => body } as unknown as Response;
+    return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) } as unknown as Response;
   }) as typeof fetch;
   const [todo] = entriesFromMarkdown("pg", "- [ ] Pay <b>rent</b>");
   await setDone("t", todo, null, true);
@@ -130,4 +130,23 @@ test("a timed-out call keeps the next one off the wire until it has finished", a
   await assert.rejects(call("t", "GET", "a", undefined, { timeoutMs: 10 }), /timeout/);
   await call("t", "GET", "b");
   assert.equal(most, 1);
+});
+
+test("the walk to a to-do stops at it: what lies after is not read", async () => {
+  const children: Record<string, unknown[]> = {
+    pg2: [
+      { id: "a0", type: "to_do", to_do: { rich_text: [{ plain_text: "First" }] }, has_children: true },
+      { id: "a1", type: "to_do", to_do: { rich_text: [{ plain_text: "Second" }] } },
+    ],
+    a0: [{ id: "a2", type: "to_do", to_do: { rich_text: [{ plain_text: "Under first" }] } }],
+  };
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    calls.push(String(url).replace(/.*v1\//, "").replace(/\?.*/, ""));
+    const m = /blocks\/([^/]+)\/children/.exec(String(url));
+    const body = m ? { results: children[m[1]] ?? [], has_more: false } : {};
+    return { ok: true, status: 200, json: async () => body } as unknown as Response;
+  }) as typeof fetch;
+  await setDone("t", { kind: "todo", id: "pg2/0/First", title: "First", page: "pg2", index: 0 }, null, true);
+  assert.deepEqual(calls, ["blocks/pg2/children", "blocks/a0"]);
 });

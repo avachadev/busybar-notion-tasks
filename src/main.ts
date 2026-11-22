@@ -20,13 +20,13 @@
  */
 
 import manifest from "./appmeta/manifest.json";
-import { type Level, load, save } from "./cache.ts";
+import { forgetOthers, type Level, load, save } from "./cache.ts";
 import { type Config, configKey, readConfig, tokenTag, usable } from "./config.ts";
 import { clearAll, deleteElements, drawElements, prepare } from "./display.ts";
 import { focusable, settle, step } from "./focus.ts";
 import { shownEntries } from "./markdown.ts";
 import { NotionError, wireIdle } from "./notion.ts";
-import { Roots } from "./roots.ts";
+import { forgetRoots, Roots } from "./roots.ts";
 import { type Element, type Focus, isTagRow, lineLeft, listFrame, loadingFrame, messageFrame as message, opens, previewFrame } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
 import { type Database, type Entry, type Option, isTask, mergeRoots, optionOf } from "./tasks.ts";
@@ -181,6 +181,15 @@ function main(): void {
   let selected = 0;
   /** The entries are worth showing: read from Notion, or remembered. */
   let loaded = false;
+  /** Only a page's first screen is in: what is on screen is not kept, the rest of the page being missing. */
+  let partial = false;
+  /**
+   * Bumped by every `enter`: a read goes on while it matches. Not the view
+   * object itself, which a read replaces when it learns a start view's kind.
+   */
+  let viewGen = 0;
+  /** What a link's id turned out to be: opened again, it needs no probe. */
+  const kinds = new Map<string, "page" | "database">();
   /**
    * Since when reads of the list on screen fail, 0 while they pass; whether its
    * note was shown in this run of failures; the timer that shows it.
@@ -515,6 +524,14 @@ function main(): void {
     save({ owner, home, stack, levels });
   }
 
+  /**
+   * Keeps the view on screen for coming back, when its list is complete: an
+   * empty one of a view still loading would come back as "All done".
+   */
+  function keepShown(): void {
+    if (loaded && !partial) keep(current(), { entries, database, focus: focused() });
+  }
+
   /** Puts a view on screen from memory when it is there; it is read again either way. */
   function enter(view: View): void {
     dropPointing();
@@ -522,6 +539,8 @@ function main(): void {
     entries = level ? level.entries : [];
     database = level ? level.database : null;
     loaded = level !== undefined;
+    partial = false;
+    viewGen += 1;
     selected = 0;
     selectById(level?.focus);
     confirmed();
@@ -563,6 +582,9 @@ function main(): void {
     home = next.link.kind === "id" ? next.link.id : "";
     loadingAt = null;
     roots?.save();
+    // What was saved under another token, or under none, leaves the bar.
+    forgetOthers(owner);
+    forgetRoots(owner);
     roots = next.token && !home ? new Roots(owner) : null;
     rootReads = 0;
     sweepAfter = 0;
@@ -581,8 +603,8 @@ function main(): void {
   async function read(token: string, scope: Config["scope"]): Promise<void> {
     const readKey = key;
     const view = current();
-    const depth = stack.length;
-    const still = () => !stopped && readKey === key && stack.length === depth && current() === view;
+    const gen = viewGen;
+    const still = () => !stopped && readKey === key && gen === viewGen;
     const startedAt = Date.now();
     const quick = view.kind === "root" && loaded && startedAt - rootReadAt < ROOT_REFRESH_MS;
     const base = entries;
@@ -594,6 +616,7 @@ function main(): void {
         stack[stack.length - 1] = resolved;
         entries = list;
         loaded = true;
+        partial = true;
         selected = settle(shown(), 0);
         redraw();
       };
@@ -635,11 +658,13 @@ function main(): void {
       }
       const keepId = shown()[selected]?.id;
       stack[stack.length - 1] = result.view;
+      if (result.view.kind === "page" || result.view.kind === "database") kinds.set(result.view.id, result.view.kind);
       entries = fresh;
       database = result.database;
       selectById(keepId);
       if ((pointing || picking) && focused() !== (pointing ?? picking)?.id) dropPointing();
       loaded = true;
+      partial = false;
       confirmed();
       problem = null;
       failures = 0;
@@ -862,11 +887,17 @@ function main(): void {
 
   // ---- Input ---------------------------------------------------------------
 
+  /** A to-do's link as a view: of the kind it turned out to be, or to be found out. */
+  function linked(id: string, title: string): View {
+    const kind = kinds.get(id);
+    return kind ? { kind, id, title } : { kind: "start", id, title };
+  }
+
   /** Opens a view from the list: a subpage, a database, a row's page or a to-do's link. */
   function go(view: View, title: string, from: Entry): void {
     loadingAt = isTagRow(from) ? null : lineLeft(from, config?.logo === true);
     flushPending();
-    keep(current(), { entries, database, focus: focused() });
+    keepShown();
     stack.push(view);
     enter(current());
     // Remembered: its name for a moment, then the list. Not yet: the loading screen, which has its name.
@@ -931,7 +962,7 @@ function main(): void {
       if (target === "title") {
         dropPointing();
         if (entry.kind === "row") go({ kind: "page", id: entry.id, title: entry.title, icon: entry.icon }, entry.title, entry);
-        else if (entry.link) go({ kind: "start", id: entry.link, title: entry.title }, entry.title, entry);
+        else if (entry.link) go(linked(entry.link, entry.title), entry.title, entry);
         return;
       }
       if (isTagRow(entry)) {
@@ -986,7 +1017,7 @@ function main(): void {
     flushPending();
     dropBanner();
     loadingAt = null;
-    keep(current(), { entries, database, focus: focused() });
+    keepShown();
     stack.pop();
     enter(current());
     redraw();

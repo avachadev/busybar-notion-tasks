@@ -164,10 +164,17 @@ API serves the settings to the local network as they are. To keep it to yourself
 
 - set a password on the bar's HTTP API (**Network → HTTP API** in the web interface);
 - prefer an internal connection shared with just the pages you need, over a personal access token;
+- install only apps you trust: any app on the bar can read another app's settings through the same API;
 - revoke the token in Notion if the bar changes hands.
 
-The token is never written anywhere else by the app: what it saves on the bar for a quick start is the
-path you were on and the titles shown there.
+The token is never written anywhere else by the app. For a quick start it saves on the bar the path you
+were on, what was shown there (titles, the text of to-dos) and the titles of the top level, in
+`/ext/apps_data/jsrunner/app.avachadev.notiontasks.localstorage.json`. The app clears it when the token
+changes or is removed, but the file stays when the app is uninstalled. Before handing the bar on, delete it:
+
+```bash
+curl -X DELETE "http://10.0.4.20/api/storage/remove?path=/ext/apps_data/jsrunner/app.avachadev.notiontasks.localstorage.json"
+```
 
 ## Limits
 

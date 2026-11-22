@@ -116,3 +116,39 @@ test("a result in a key order the scan does not expect is counted, not guessed a
   assert.deepEqual(s.found, []);
   assert.equal(s.odd, 1);
 });
+
+test("a scan of shared data sources takes each database with its title, icon and parent, whatever the chunks", () => {
+  const source = (n: number, database: number, parent: Record<string, unknown>, title: string[], icon: unknown = null) => ({
+    ...dataSource(n, database, true),
+    icon,
+    title: rich(...title),
+    // A schema full of `_`, as real ones are.
+    properties: { Due_date: { id: "d_d", name: "Due_date", type: "date", date: {} }, Status: { id: "s_s", name: "Status", type: "status", status: { options: [{ id: "o_1", name: "not_started", color: "default" }] } } },
+    database_parent: parent,
+  });
+  const answer = new TextEncoder().encode(JSON.stringify({
+    object: "list",
+    results: [
+      source(20, 21, WORKSPACE, ["Tasks"]),
+      source(22, 23, { type: "page_id", page_id: id(24) }, ["Shared \"by\" itself"], { type: "emoji", emoji: "✅" }),
+      source(25, 26, { type: "block_id", block_id: id(27) }, []),
+    ],
+    next_cursor: null,
+    has_more: false,
+    type: "page_or_data_source",
+    page_or_data_source: {},
+  }));
+  const expected = [
+    { kind: "database", id: id(21), title: "Tasks", icon: "", parent: "", parentType: "" },
+    { kind: "database", id: id(23), title: "Shared \"by\" itself", icon: "✅", parent: id(24), parentType: "page_id" },
+    { kind: "database", id: id(26), title: null, icon: "", parent: id(27), parentType: "block_id" },
+  ];
+  for (const size of [answer.length, 1460, 64, 13, 3, 1]) {
+    const s = new SearchScan(true);
+    for (let i = 0; i < answer.length; i += size) s.feed(answer.subarray(i, i + size));
+    s.end();
+    assert.deepEqual(s.found, expected, `chunks of ${size}`);
+    assert.equal(s.odd, 0);
+    assert.equal(s.hasMore, false);
+  }
+});

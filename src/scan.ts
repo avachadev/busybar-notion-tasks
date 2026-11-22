@@ -28,6 +28,13 @@ export interface TopLevel {
   readonly title: string | null;
   /** A page's icon when it is an emoji (`"icon":{"type":"emoji","emoji":"..."}`), else "". */
   readonly icon: string;
+  /**
+   * Only in a scan of shared data sources: the id of the page or block the
+   * database is in, "" for the workspace.
+   */
+  readonly parent?: string;
+  /** With `parent`: "page_id" or "block_id". */
+  readonly parentType?: string;
 }
 
 const W = 0x77;
@@ -50,6 +57,12 @@ const DATABASE_ID = ascii('"database_id":"');
 const PLAIN_TEXT = ascii('"plain_text":"');
 const TITLE_KEY = ascii('"title":[');
 const EMOJI_KEY = ascii('"emoji":"');
+/** A data source's start and its database's parent, found by their `_` in a scan of shared data sources. */
+const SOURCE_START = ascii('"object":"data_source","id":"');
+const SOURCE_START_U = 14;
+const DATABASE_PARENT = ascii('"database_parent":{"type":"');
+const DATABASE_PARENT_U = 9;
+const WORKSPACE = "workspace";
 /** From the start of a data source's `"database_id":"` to the `w`: the key, the id, `"},`, the key, `{"type":"`. */
 const DATABASE_ID_BACK = DATABASE_ID.length + 36 + 3 + 27;
 /** How far back a page's start may be from its parent: a cover and an icon with long URLs fit. */
@@ -59,8 +72,12 @@ const MAX_TITLE_BYTES = 6144;
 
 /** A title being read: where the search stands, and what has been read so far. */
 interface TitleJob {
-  /** A database is found whole at its hit; it waits in line only to keep the answer's order. */
-  readonly kind: "page" | "database";
+  /**
+   * A database is found whole at its hit; it waits in line only to keep the
+   * answer's order. A source's title is read at its start and kept until its
+   * database's parent, at its end, says where it is.
+   */
+  readonly kind: "page" | "database" | "source";
   readonly id: string;
   readonly icon: string;
   readonly hit: number;
@@ -159,6 +176,18 @@ class Window {
  */
 export class SearchScan {
   readonly found: TopLevel[] = [];
+  /**
+   * `shared`: the answer is a search of data sources for an internal
+   * connection, whose top level includes databases under pages it cannot see.
+   * Every data source is then taken, with its title and its database's
+   * parent: found by their `_`, which is common in a schema, but each costs a
+   * few byte compares (a 24 KB schema has a few hundred).
+   */
+  private readonly shared: boolean;
+
+  constructor(shared = false) {
+    this.shared = shared;
+  }
   /** Hits that did not fit a result as the scan expects: reported, not guessed at. */
   odd = 0;
   cursor: string | null = null;
@@ -166,6 +195,10 @@ export class SearchScan {
   private readonly win = new Window();
   /** Positions of `w` whose following bytes had not arrived. */
   private waiting: number[] = [];
+  /** The same for `_` in a scan of shared data sources. */
+  private waitingU: number[] = [];
+  /** The title and icon of the data source being read, until its database's parent. */
+  private source: { title: string; icon: string } | null = null;
   private jobs: TitleJob[] = [];
 
   feed(chunk: Uint8Array): void {
@@ -176,13 +209,72 @@ export class SearchScan {
     const again = this.waiting;
     this.waiting = [];
     for (const hit of again) this.check(hit);
-    for (let i = chunk.indexOf(W); i >= 0; i = chunk.indexOf(W, i + 1)) this.check(from + i);
+    if (this.shared) {
+      const againU = this.waitingU;
+      this.waitingU = [];
+      // In order: a source's title job is queued before its parent is looked at.
+      for (const u of againU) this.checkShared(u);
+      for (let i = chunk.indexOf(UNDERSCORE); i >= 0; i = chunk.indexOf(UNDERSCORE, i + 1)) this.checkShared(from + i);
+    } else {
+      for (let i = chunk.indexOf(W); i >= 0; i = chunk.indexOf(W, i + 1)) this.check(from + i);
+    }
     this.runJobs();
+  }
+
+  /** A `_` in a scan of shared data sources: a source's start, its database's parent, or nothing. */
+  private checkShared(u: number): void {
+    const start = this.win.matches(u - SOURCE_START_U, SOURCE_START);
+    if (start === true) {
+      const at = u - SOURCE_START_U;
+      this.source = null;
+      this.jobs.push({ kind: "source", id: "", icon: "", hit: u, pos: at + SOURCE_START.length, inside: false, title: "" });
+      return;
+    }
+    const parent = this.win.matches(u - DATABASE_PARENT_U, DATABASE_PARENT);
+    if (parent === true) {
+      // Its source's title is read by now: it comes before the schema.
+      this.runJobs();
+      if (this.parentAt(u - DATABASE_PARENT_U) === "wait") this.waitingU.push(u);
+      return;
+    }
+    if (start === null || parent === null) this.waitingU.push(u);
+  }
+
+  /** Reads a database's parent at `start` and takes the database: its id stands just before. */
+  private parentAt(start: number): "wait" | "done" {
+    const t = start + DATABASE_PARENT.length;
+    const q = this.win.indexOf(QUOTE, t);
+    if (q < 0) return "wait";
+    if (q - t > 16) {
+      this.odd += 1;
+      return "done";
+    }
+    const type = String.fromCharCode.apply(null, this.win.slice(t, q) as unknown as number[]);
+    let parent = "";
+    if (type !== WORKSPACE) {
+      const key = ascii(`,"${type}":"`);
+      const idAt = q + 1 + key.length;
+      if (idAt + 36 > this.win.end) return "wait";
+      if (this.win.matches(q + 1, key) !== true) {
+        this.odd += 1;
+        return "done";
+      }
+      parent = this.id(idAt);
+    }
+    const at = start - 3 - 36 - DATABASE_ID.length;
+    if (this.win.matches(at, DATABASE_ID) !== true) {
+      this.odd += 1;
+      return "done";
+    }
+    const source = this.source;
+    this.source = null;
+    this.found.push({ kind: "database", id: this.id(at + DATABASE_ID.length), title: source && source.title ? source.title : null, icon: source ? source.icon : "", parent, parentType: parent ? type : "" });
+    return "done";
   }
 
   /** The answer is over: a title still open is taken as read, and the cursor is read from the answer's tail. */
   end(): void {
-    for (const job of this.jobs) this.found.push({ kind: job.kind, id: job.id, title: job.title || null, icon: job.icon });
+    for (const job of this.jobs) if (job.kind !== "source") this.found.push({ kind: job.kind, id: job.id, title: job.title || null, icon: job.icon });
     this.jobs = [];
     const tailFrom = Math.max(this.win.first, this.win.end - 400);
     const tail = String.fromCharCode.apply(null, this.win.slice(tailFrom, this.win.end) as unknown as number[]);
@@ -252,6 +344,12 @@ export class SearchScan {
       const state = job.kind === "database" ? "done" : this.title(job);
       if (state === "wait") return;
       this.jobs.shift();
+      if (job.kind === "source") {
+        // Its icon lies between its start and its title, which is read past by now.
+        const icon = this.icon(job.hit - SOURCE_START_U, Math.min(job.pos, this.win.end));
+        this.source = { title: state === "done" ? job.title : "", icon };
+        continue;
+      }
       this.found.push({ kind: job.kind, id: job.id, title: job.kind === "page" && state === "done" && job.title ? job.title : null, icon: job.icon });
     }
   }

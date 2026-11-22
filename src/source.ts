@@ -2,6 +2,7 @@
 
 import { PageReader, sameText } from "./markdown.ts";
 import { DroppedError, type Json, type Turn, NotionError, WRITE, call, stream } from "./notion.ts";
+import { SearchScan } from "./scan.ts";
 import { MarkdownLines } from "./stream.ts";
 import {
   type Database,
@@ -18,6 +19,7 @@ import {
   byTitle,
   openFirst,
   pickRoots,
+  withIcon,
   rootsInSearch,
   setDoneCall,
   tasksFromQuery,
@@ -68,8 +70,8 @@ export interface Loaded {
 /** Search results per request, and how many requests a root read may make, for pages and for databases. */
 const SEARCH_PER_PAGE = 20;
 const MAX_PAGE_SEARCHES = 5;
-const DATABASES_PER_SEARCH = 10;
-const MAX_DATABASE_SEARCHES = 3;
+const DATABASES_PER_SEARCH = 100;
+const MAX_DATABASE_SEARCHES = 1;
 /** A database's data sources tried for one with a done field. */
 const MAX_SOURCES = 3;
 /**
@@ -155,10 +157,19 @@ async function readPage(token: string, id: string, alive: Alive, onFirst?: (entr
   return reader.finish();
 }
 
+/** Search answers carry only the title of a page's properties: an answer of 20 is then about 30 KB. */
+const SEARCH_TITLES = "search?filter_properties=title";
+
 /**
  * The API has no call for the sidebar, so the top level is picked out of
  * searches: pages under the workspace, then databases under it. Sorted by
  * title: the sidebar's own order is not in the API either.
+ *
+ * This is the read for an internal connection (`roots.ts` sweeps for a
+ * personal token). It sees only what is shared with it, so a page or a
+ * database whose parent page it cannot see is top level too, once all pages
+ * were searched. Data sources are scanned as they arrive, never parsed: each
+ * carries its whole schema, up to 24 KB, which `filter_properties` does not trim.
  */
 async function readRoot(token: string, alive: Alive): Promise<Entry[]> {
   let found: ReturnType<typeof foundInSearch> = [];
@@ -168,7 +179,7 @@ async function readRoot(token: string, alive: Alive): Promise<Entry[]> {
     const body: Json = { filter: { property: "object", value: "page" }, page_size: SEARCH_PER_PAGE };
     if (cursor) body.start_cursor = cursor;
     check(alive);
-    const response = await call(token, "POST", "search", body, reading(alive));
+    const response = await call(token, "POST", SEARCH_TITLES, body, reading(alive));
     found = found.concat(foundInSearch(response));
     if (response.has_more !== true || typeof response.next_cursor !== "string") {
       searchedAll = true;
@@ -177,30 +188,48 @@ async function readRoot(token: string, alive: Alive): Promise<Entry[]> {
     cursor = response.next_cursor;
   }
   const roots = pickRoots(found, searchedAll);
+  const pages = new Set<string>();
+  for (const f of found) pages.add(f.entry.id);
+  const have = new Set<string>();
+  for (const e of roots) have.add(e.id);
 
   cursor = "";
   for (let i = 0; i < MAX_DATABASE_SEARCHES; i += 1) {
     const body: Json = { filter: { property: "object", value: "data_source" }, page_size: DATABASES_PER_SEARCH };
     if (cursor) body.start_cursor = cursor;
     check(alive);
-    const response = await call(token, "POST", "search", body, reading(alive));
-    for (const db of rootsInSearch(response)) if (!roots.some((e) => e.id === db.id)) roots.push(db);
-    if (response.has_more !== true || typeof response.next_cursor !== "string") break;
-    cursor = response.next_cursor;
+    const scan = new SearchScan(true);
+    await stream(token, "search", (bytes) => {
+      scan.feed(bytes);
+      return alive();
+    }, reading(alive), "POST", body);
+    check(alive);
+    scan.end();
+    for (const db of scan.found) {
+      // Under the workspace, or under a page it cannot see; not in a block, whose page shows it.
+      const top = !db.parent || (searchedAll && db.parentType === "page_id" && !pages.has(db.parent));
+      if (!top || have.has(db.id)) continue;
+      have.add(db.id);
+      roots.push(withIcon({ kind: "database", id: db.id, title: db.title ?? "Untitled" }, db.icon));
+    }
+    if (!scan.hasMore || !scan.cursor) break;
+    cursor = scan.cursor;
   }
   return byTitle(roots);
 }
 
-/** How many of the latest edited pages and databases a quick check of the top level looks at. */
+/** How many of the latest edited pages a quick check of the top level looks at. */
 const RECENT = 10;
 
 /**
- * A quick check of the top level between full reads: one search for what was
- * edited last, pages and databases together. New top-level ones show at once.
+ * A quick check of the top level between full reads: one search for the pages
+ * edited last. New top-level pages show at once; databases wait for the full
+ * read, their answers being too big to take whole.
  */
 export async function readRecentRoots(token: string, alive: Alive): Promise<Entry[]> {
   check(alive);
-  const response = await call(token, "POST", "search", {
+  const response = await call(token, "POST", SEARCH_TITLES, {
+    filter: { property: "object", value: "page" },
     sort: { timestamp: "last_edited_time", direction: "descending" },
     page_size: RECENT,
   }, reading(alive));
@@ -271,15 +300,18 @@ interface Walk {
 
 /** Per page, the to-dos' block ids and texts in the markdown's order, as far as they were walked. */
 const walks = new Map<string, Walk>();
-const MAX_WALKS = 4;
+const MAX_WALKS = 2;
 
 /**
  * Walks a page's blocks depth first, in the order the markdown lists them, and
- * collects its to-dos. Only blocks with children are looked into.
+ * collects its to-dos up to the one at `upto`: a page of 600 to-dos walked to
+ * its end took the wire for about 24 requests. Only blocks with children are
+ * looked into.
  */
-async function walk(token: string, page: string): Promise<Walk> {
+async function walk(token: string, page: string, upto: number): Promise<Walk> {
   const ids: string[] = [];
   const texts: string[] = [];
+  const enough = () => ids.length > upto;
   const visit = async (blockId: string): Promise<void> => {
     let cursor = "";
     do {
@@ -289,8 +321,10 @@ async function walk(token: string, page: string): Promise<Walk> {
         if (block.todo !== null) {
           ids.push(block.id);
           texts.push(block.todo);
+          if (enough()) return;
         }
         if (block.descend) await visit(block.id);
+        if (enough()) return;
       }
       cursor = response.has_more === true && typeof response.next_cursor === "string" ? response.next_cursor : "";
     } while (cursor);
@@ -306,7 +340,7 @@ async function todoBlock(token: string, task: Entry): Promise<string> {
   const found = (w: Walk | undefined) => (w && index < w.ids.length && sameText(w.texts[index], task.title) ? w.ids[index] : "");
   const known = found(walks.get(page));
   if (known) return known;
-  const fresh = await walk(token, page);
+  const fresh = await walk(token, page, index);
   walks.delete(page);
   walks.set(page, fresh);
   if (walks.size > MAX_WALKS) {
@@ -320,18 +354,20 @@ async function todoBlock(token: string, task: Entry): Promise<string> {
 
 /**
  * Ticks a to-do by editing its line in the page's markdown: one request, and
- * Notion keeps the block. False when Notion finds no single such line.
+ * Notion keeps the block. False when Notion finds no single such line. The
+ * line carries its line break (`PageReader.finish`), so it is not found inside
+ * a longer one. The answer is the whole page, so it is not read.
  */
 async function tickByLine(token: string, task: Entry, done: boolean): Promise<boolean> {
   // The line as it is now, whatever it was when read: the bar may have ticked it since.
   const text = (task.line ?? "").substring(6);
   const update = { old_str: (done ? "- [ ] " : "- [x] ") + text, new_str: (done ? "- [x] " : "- [ ] ") + text };
   try {
-    await call(token, "PATCH", `pages/${task.page}/markdown`, {
+    await stream(token, `pages/${task.page}/markdown`, () => false, writing, "PATCH", {
       markdown_version: "v2",
       type: "update_content",
       update_content: { content_updates: [update] },
-    }, writing);
+    });
     return true;
   } catch (err) {
     // No match, or more than one: the page changed since it was read, or it is a synced copy.

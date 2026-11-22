@@ -3,8 +3,15 @@
 Built (22.11.2026): `notion.ts` (the queue), `scan.ts`, `roots.ts`, `main.ts`. Not built: the
 ancestor walk for a quick first fill (the first pass took 44 s on a 929-page workspace, so it was not
 needed there), and a sweep for an internal connection, whose top level is still read the old way: the
-first 100 search results, a page whose parent is not among them counting as top level. How the app finds and keeps the workspace's top-level pages and databases,
-and how often it checks them while the app is open.
+first 100 search results, a page or a database whose parent page is not among them counting as top
+level. Its page searches carry only titles (`filter_properties=title`); its data-source search (up to
+100) is scanned as it arrives (`SearchScan` with `shared`), every source taken with its title, icon and
+its database's parent, because each carries its whole schema, up to 24 KB, which the bar cannot parse
+ten at a time (22.11: the scan matched `JSON.parse` on 111 real sources). Its quick check reads only
+pages.
+
+How the app finds and keeps the workspace's top-level pages and databases, and how often it checks
+them while the app is open.
 
 ## The problem
 

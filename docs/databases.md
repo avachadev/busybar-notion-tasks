@@ -3,8 +3,7 @@
 Design for how the app reads a Notion database and shows its rows. Status: built (22.11.2026), not yet
 tried on a bar: classification, two-line rows, pointing and choosing, opening rows and to-do links, the
 view's sorts. Not built: the manual order of a view without sorts, read-only formula and rollup
-statuses, a relation to a statuses database. Screens in Figma, page "notion", section "Вариант I: наведение и
-выбор статуса (22.11)"; the variants it was chosen from are in the two sections to its left.
+statuses, a relation to a statuses database. The screens were drawn in Figma before they were built (22.11); the variant chosen is described below.
 
 ## Principle
 
@@ -76,7 +75,7 @@ is left for later: it needs a second data source and access to it.
 ## Drawing a row
 
 A row with a Status or a Select takes the whole 72x16 screen in two lines: the title above, the status as a
-Notion-like tag below (Figma, section "Вариант I: наведение и выбор статуса"). A status in the same line
+Notion-like tag below. A status in the same line
 as the title leaves 5 to 7 letters of the title, and a colour alone means nothing to someone who does not
 know the code (22.11).
 
