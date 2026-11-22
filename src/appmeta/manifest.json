@@ -6,5 +6,5 @@
   "api_version": "27.15.0",
   "description": "Browse Notion and tick tasks off with the bar's buttons",
   "author": "avachadev",
-  "heap_size_kib": 256
+  "heap_size_kib": 384
 }

@@ -63,6 +63,12 @@ const DATABASES_PER_SEARCH = 10;
 const MAX_DATABASE_SEARCHES = 3;
 /** A database's data sources tried for one with a done field. */
 const MAX_SOURCES = 3;
+/**
+ * Lines a page shows before the rest of it is read: a long page takes seconds
+ * to read on the bar, and the first screen needs only a few.
+ */
+const FIRST_SCREEN = 8;
+
 /** Blocks per request when looking for a to-do's id: an answer of 100 blocks can run to 50 KB. */
 const WALK_PAGE_SIZE = 25;
 
@@ -87,14 +93,21 @@ async function openDatabase(token: string, id: string, alive: Alive): Promise<{ 
  * A page, read as its markdown arrives (`stream.ts`): the answer is never held
  * whole, and reading stops once MAX_ENTRIES lines are kept.
  */
-async function readPage(token: string, id: string, alive: Alive): Promise<Entry[]> {
+async function readPage(token: string, id: string, alive: Alive, onFirst?: (entries: Entry[]) => void): Promise<Entry[]> {
   check(alive);
   const reader = new PageReader(id);
+  let shown = false;
   const lines = new MarkdownLines((line) => {
     reader.push(line);
-    return !reader.full;
+    if (onFirst && !shown && reader.entries.length >= FIRST_SCREEN) {
+      shown = true;
+      onFirst(reader.snapshot());
+    }
+    // A page the user has left is not read on.
+    return !reader.full && alive();
   });
   await stream(token, `pages/${id}/markdown?markdown_version=v2`, (bytes) => lines.feed(bytes));
+  check(alive);
   lines.end();
   return reader.finish();
 }
@@ -162,6 +175,7 @@ export async function readView(
   now: Date,
   databases: Map<string, Database>,
   alive: Alive,
+  onFirst?: (entries: Entry[], view: View) => void,
 ): Promise<Loaded> {
   if (view.kind === "root") return { entries: await readRoot(token, alive), view, database: null };
 
@@ -179,7 +193,9 @@ export async function readView(
   }
 
   if (resolved.kind === "page") {
-    return { entries: await readPage(token, resolved.id, alive), view: resolved, database: null };
+    const page = resolved;
+    const first = onFirst ? (list: Entry[]) => onFirst(list, page) : undefined;
+    return { entries: await readPage(token, page.id, alive, first), view: page, database: null };
   }
   if (resolved.kind !== "database") throw new Error("unexpected view");
 

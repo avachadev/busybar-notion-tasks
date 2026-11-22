@@ -8,7 +8,7 @@
  * the page's to-dos instead, and `source.ts` finds its block when it is ticked.
  *
  * Lines are taken one at a time (`PageReader`), as `stream.ts` cuts them from
- * the answer while it arrives: the bar's heap is 256 KiB, and a page of notes
+ * the answer while it arrives: the app's heap is 384 KiB, and a page of notes
  * can be hundreds of kilobytes. A line is only decoded when it is kept.
  *
  * Pure, so it is tested off the device.
@@ -26,9 +26,9 @@ const BLOCK_OPEN = /^\s*<(toggle|todo)\b([^>]*)>(.*)$/;
 
 /**
  * Lines kept from one page, at most: the rest of a longer page is not read.
- * A line costs a few hundred bytes of the bar's 256 KiB heap; 600 of them ran it out.
+ * A line costs a few hundred bytes of the app's heap; 600 of them ran it out.
  */
-export const MAX_ENTRIES = 150;
+export const MAX_ENTRIES = 100;
 
 /**
  * The object id at the end of a Notion URL: its last 32 hex digits, before any
@@ -198,6 +198,11 @@ export class PageReader {
       this.raw.splice(u.at, 1);
       inside.base = u.depth;
     }
+  }
+
+  /** The entries so far, for showing the first screen while the rest is read: no counts or lines for ticking yet. */
+  snapshot(): Entry[] {
+    return this.entries.filter((e) => e.id !== "");
   }
 
   /** Takes the page's next line. */

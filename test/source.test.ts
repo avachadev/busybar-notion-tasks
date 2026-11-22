@@ -41,6 +41,16 @@ test("a page is one markdown request", async () => {
   assert.deepEqual(loaded.entries.map((e) => [e.title, e.done]), [["A", false], ["B", true]]);
 });
 
+test("a long page shows its first screen once, while the rest is read", async () => {
+  const md = Array.from({ length: 30 }, (_, i) => `- [ ] Task ${i}`).join("\n");
+  const body = JSON.stringify({ object: "page_markdown", markdown: md });
+  globalThis.fetch = (async () => ({ ok: true, status: 200, json: async () => JSON.parse(body), text: async () => body }) as unknown as Response) as typeof fetch;
+  const firsts: number[] = [];
+  const loaded = await readView("t", { kind: "page", id: "p", title: "" }, "today", new Date(), new Map(), () => true, (list) => firsts.push(list.length));
+  assert.deepEqual(firsts, [8]);
+  assert.equal(loaded.entries.length, 30);
+});
+
 test("ticking a to-do from markdown walks the blocks to it once, depth first", async () => {
   const children: Record<string, unknown[]> = {
     pg: [

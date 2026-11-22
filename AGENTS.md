@@ -38,6 +38,15 @@ off. What it does, its settings and its files: [README.md](README.md).
     this work and 119 ms after;
   - reading the settings costs the bar about 200 ms of file work, and saving `localStorage` writes
     flash: both wait until the user has been idle for `IDLE_MS`.
+- Memory:
+  - running out of the JS heap is `jerryscript fatal error 10` in the log, and the firmware then
+    restarts the whole bar; a 43 KB page read whole did that with a 256 KiB heap;
+  - the heap is 384 KiB; a page is read as a stream (`stream.ts`) and never held whole, at most
+    `MAX_ENTRIES` lines; neighbouring frames are not prepared while a read is out;
+  - a loop over bytes costs about 20-50 us a byte, `Uint8Array.indexOf` about 3 us a byte: only kept
+    lines are decoded, ASCII natively; a regular expression run over a line costs about 0.3-3 ms;
+  - a page with 120 subpages still takes several seconds to read: its first screen shows after 8
+    lines (`FIRST_SCREEN`), and a slow view is read again no sooner than 3 times its read time.
 - Settings:
   - the app reads them only through `GET /api/apps/settings` and cannot write them;
   - `"sensitive": true` hides the token in local web, but the API still serves it;
@@ -52,6 +61,11 @@ Use the bar's own log, not the screen: polling `/api/screen` loads the same web 
 through. `telnet 10.0.4.20`, `log error`, and one `console.error` line per frame with `Date.now()`
 differences (console.log does not reach the log). `log trace` shows the firmware's file work too.
 Send input with single `POST /api/input` requests a second or more apart.
+
+Edge cases live in a test page in Notion (600 to-dos, a 204 KB page of notes,
+120 subpages, deep nesting, odd titles, big and wide databases). Point **Start page** at it to test,
+and set it back to empty after. Back on the top level leaves the app by design: a test script that
+presses Back there ends up in the firmware's launcher, which is not a crash.
 
 ## Work
 

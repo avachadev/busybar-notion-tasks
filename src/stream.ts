@@ -4,7 +4,7 @@
  *
  * The answer is JSON, `{"object":"page_markdown",...,"markdown":"...",...}`,
  * and a page of notes can make it hundreds of kilobytes, while the app's whole
- * heap is 256 KiB: a 43 KB answer read whole ran it out and the bar restarted.
+ * heap was 256 KiB (now 384): a 43 KB answer read whole ran it out and the bar restarted.
  * The bar's JavaScript has no TextDecoder, and a loop over bytes costs about
  * 20 us a byte, so the bytes are searched with the native `indexOf`, a line
  * ends at a JSON `\n`, and only the lines the reader keeps are decoded, UTF-8

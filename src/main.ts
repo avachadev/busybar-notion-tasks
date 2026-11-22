@@ -37,6 +37,8 @@ const TICK_MS = 3000;
 const IDLE_MS = 5000;
 /** How often the open page or database is read again: a change made in Notion shows this soon. */
 const REFRESH_MS = 5000;
+/** A read that took T is not repeated sooner than this many T later. */
+const SLOW_READ_FACTOR = 3;
 /**
  * The whole top level takes several requests to find, so it is read in full
  * this seldom; in between, one search for what was edited last brings new
@@ -75,7 +77,7 @@ const CONFETTI_PATHS = [
   "animations/confetti_streamers.anim",
 ];
 const CONFETTI_MS = 1500;
-/** Views kept in memory for going back without waiting: each holds up to MAX_ENTRIES lines of the 256 KiB heap. */
+/** Views kept in memory for going back without waiting: each holds up to MAX_ENTRIES lines of the 384 KiB heap. */
 const MAX_REMEMBERED = 4;
 
 type Problem = readonly [string, string];
@@ -331,7 +333,8 @@ function main(): void {
   let readyTimer: ReturnType<typeof setTimeout> | undefined;
   function getReady(): void {
     readyTimer = undefined;
-    if (stopped || drawing || dirty || banner || !loaded || !config) return;
+    // Not while a read is out: a long page is parsed meanwhile, and both at once ran the heap out.
+    if (stopped || drawing || dirty || banner || reading || !loaded || !config) return;
     const state = shownState();
     if (!state.any) return;
     for (const delta of [1, -1]) {
@@ -460,9 +463,18 @@ function main(): void {
     const base = entries;
     try {
       // A read of a view the user has left stops at its next request, so the new view's read is not kept waiting.
+      // A page read for the first time shows its first screen while the rest of it is read.
+      const first = (list: Entry[], resolved: View) => {
+        if (!still() || loaded) return;
+        stack[stack.length - 1] = resolved;
+        entries = list;
+        loaded = true;
+        selected = settle(shown(), 0);
+        redraw();
+      };
       const result = quick
         ? { view, database: null, entries: mergeRoots(base, await readRecentRoots(token, still)) }
-        : await readView(token, view, scope, new Date(), databases, still);
+        : await readView(token, view, scope, new Date(), databases, still, first);
       if (view.kind === "root" && !quick && readKey === key) rootReadAt = startedAt;
       const now = Date.now();
       const fresh = result.entries.map((e) => {
@@ -488,7 +500,8 @@ function main(): void {
       stale = false;
       problem = null;
       failures = 0;
-      nextReadAt = now + (view.kind === "root" ? ROOT_CHECK_MS : REFRESH_MS);
+      // A view that takes long to read is read again less often, so reading does not take the bar over.
+      nextReadAt = now + Math.max(view.kind === "root" ? ROOT_CHECK_MS : REFRESH_MS, (now - startedAt) * SLOW_READ_FACTOR);
       keep(result.view, { entries, database, focus: focused() });
       persist();
     } catch (err) {

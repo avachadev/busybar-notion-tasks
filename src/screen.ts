@@ -67,7 +67,7 @@ const MARKS: Record<string, readonly string[]> = {
 
 /**
  * Elements by what they are made of; cleared when it grows, which only costs
- * rebuilding them. Kept small: the app's whole heap is 256 KiB, and a frame and
+ * rebuilding them. Kept small: the app's whole heap is 384 KiB, and a frame and
  * its two neighbours need about 30 elements.
  */
 const made = new Map<string, Element>();
