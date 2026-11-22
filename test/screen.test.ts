@@ -185,7 +185,9 @@ test("a row with a status fills the screen: title above, its status as a tag bel
   assert.deepEqual(placeLines(rows, 1), [{ offset: 0, y: 0 }]);
   const els = byId(listFrame(rows, 1, new Set()));
   assert.equal(els.row1.height, 16);
-  assert.equal(els.text1.x, 4);
+  // The title and the tag's text on one vertical, 2 px after the pointer's tip.
+  assert.equal(els.text1.x, 5);
+  assert.equal(els.tagtext1.x, 5);
   assert.equal(els.text1.text, "Call the bank");
   assert.equal(els.chevron1.type, "xpmbitmap");
   assert.equal(els.tagtext1.text, "Doing");
@@ -195,24 +197,26 @@ test("a row with a status fills the screen: title above, its status as a tag bel
   assert.equal(els.row2, undefined);
 });
 
-test("pointing dims all but its part; choosing moves the tag between two arrows", () => {
+test("pointing: the firmware's cursor at the plate's edge before the title or the status; choosing: its value arrows, the tag staying put", () => {
   const rows = [row("b", "Call", "Doing", "blue")];
   const list = byId(listFrame(rows, 0, new Set()));
+  assert.equal(list.go1, undefined);
   const title = byId(listFrame(rows, 0, new Set(), false, new Set(), { mode: "title" }));
-  assert.ok(title.go1);
+  assert.deepEqual([title.go1.x, title.go1.y], [1, 3]);
   assert.equal(title.text1.color, list.text1.color);
   assert.notEqual(title.tag1.fill_colors[0], list.tag1.fill_colors[0]);
   const mark = byId(listFrame(rows, 0, new Set(), false, new Set(), { mode: "mark" }));
-  assert.equal(mark.go1, undefined);
+  assert.deepEqual([mark.go1.x, mark.go1.y], [1, 10]);
+  assert.match(String(mark.go1.data), /#  ?\n##\n# /);
   assert.equal(mark.text1.color, "#FFFFFF66");
   assert.equal(mark.tag1.fill_colors[0], list.tag1.fill_colors[0]);
   const pick = byId(listFrame(rows, 0, new Set(), false, new Set(), { mode: "pick", tag: { name: "Done", color: "green" } }));
   assert.equal(pick.tagtext1.text, "Done");
-  assert.equal(pick.tag1.x, 7);
-  assert.equal(pick.arrowl1.x, 3);
-  assert.ok(pick.arrowr1);
+  assert.equal(pick.tag1.x, list.tag1.x);
+  assert.deepEqual([pick.go1.x, pick.go1.y], [1, 10]);
+  assert.match(String(pick.go1.data), / #\n# \n #/);
+  assert.equal(pick.pick1.x, (pick.tag1.x as number) + (pick.tag1.width as number) + 1);
 });
-
 test("a to-do that links a page has a chevron and two parts; one that does not has neither", () => {
   const linked: Entry = { kind: "todo", id: "a", title: "Brief", link: "x" };
   const els = byId(listFrame([linked], 0, new Set()));
@@ -274,4 +278,16 @@ test("a view read before: its mark where the spinner was, its title, and what it
   assert.deepEqual([els.toptitle.x, els.topdetail.x, els.topdetail.text, els.topdetail.color], [10, 10, "3 pages, 2 tasks", "#FFFFFF66"]);
   assert.equal(els.loadspin, undefined);
   assert.equal(els.loadbars, undefined);
+});
+
+test("opened from a line of one row, the loading screen keeps that line where it was; from a row with a status, the skeleton", () => {
+  const inPlace = byId(loadingFrame("Notes", false, 3));
+  assert.deepEqual([inPlace.loadspin.x, inPlace.loadspin.y], [4, 4]);
+  assert.deepEqual([inPlace.toptitle.x, inPlace.toptitle.y], [13, 3]);
+  assert.deepEqual([inPlace.loaddim.x, inPlace.loaddim.y], [13, 4]);
+  assert.equal(inPlace.loadbars, undefined);
+  // The same place as the line had in the list.
+  const line = byId(listFrame([{ kind: "page", id: "p", title: "Notes", depth: 1 }], 0, new Set()));
+  assert.deepEqual([line.text1.x, line.text1.y], [inPlace.toptitle.x, inPlace.toptitle.y]);
+  assert.ok(byId(loadingFrame("Notes")).loadbars);
 });

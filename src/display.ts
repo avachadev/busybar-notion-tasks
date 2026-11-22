@@ -45,6 +45,14 @@ export function drawElements(app: string, elements: readonly object[]): Promise<
   return send("POST", `{"application_name":${JSON.stringify(app)},"priority":50,"elements":[${elements.map(jsonOf).join(",")}]}`);
 }
 
+/**
+ * Deletes some of the app's elements. Only ids known to be on screen: the bar
+ * refuses the whole request when one of them is not there.
+ */
+export function deleteElements(app: string, ids: readonly string[]): Promise<void> {
+  return send("DELETE", JSON.stringify({ application_name: app, element_ids: ids }));
+}
+
 /** Clears every element the app has on screen: to start over once what is there is no longer known. */
 export async function clearAll(app: string): Promise<void> {
   try {

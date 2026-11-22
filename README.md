@@ -51,12 +51,14 @@ Either of these works.
 A task whose title opens something has two parts. A database row's title always opens: every row is a
 page and may hold its own to-dos, and the bar does not read it before you open it. A to-do's title opens
 when its text mentions or links a Notion page. Such a task has a chevron › at the right. The first
-**OK** points at it: everything else dims, the wheel moves between the title and the mark (the checkbox
-or the status), **OK** on the title opens it and on the mark acts on it. A to-do without a link ticks at
+**OK** points at it: everything else dims and the bar's cursor `▶` stands before the part pointed at, the
+wheel moves between the title and the mark (the checkbox or the status), **OK** on the title opens it and
+on the mark acts on it. A to-do without a link ticks at
 once.
 
 A row of a database with a status (or a select) fills the screen: its title above, its status below as
-a tag in the option's colour. **OK** on the tag chooses the status in place: arrows appear on both sides,
+a tag in the option's colour. **OK** on the tag chooses the status in place: the bar's value arrows `‹ ›` appear on both sides, as for a
+setting in SETTINGS,
 the wheel goes through the database's options, **OK** writes the one on show, **Back** keeps the old one.
 A status the database's view shows as a checkbox stays a checkbox.
 
@@ -70,8 +72,9 @@ A status the database's view shows as a checkbox stays a checkbox.
 | Toggle | No plate; ▸ closed, ▾ open, the number of open tasks inside on the right. Toggles start closed. |
 | Heading | Grey text, no mark; the focus passes over it |
 
-While a page or a database is read for the first time, its title moves to the top line in grey with the
-bar's own spinner where its mark goes, and two grey bars stand in for its lines; a light band sweeps
+While a page or a database is read for the first time, the bar's own spinner turns where its mark was
+and its title, in grey, stays where it was; opened from a row with a status, or at the start, the title
+is on the top line and two grey bars stand in for the lines to come; a light band sweeps
 across the title and the bars: the bar has not hung, Notion is answering. A page read before opens at
 once, from memory: for a moment its mark, its title and, under it in grey, what it holds, then the list,
 read again behind it.

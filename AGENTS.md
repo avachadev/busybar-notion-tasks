@@ -40,7 +40,9 @@ off. What it does, its settings and its files: [README.md](README.md).
     screen greys the title with a 60% black layer (`load_dim`) whose clear band is the shimmer;
   - an app's animation file being played cannot be overwritten (`storage/write` fails): clear the
     elements first;
-  - a looping animation moved off screen is also set `loop: false`, so it stops costing frames;
+  - an animation that leaves the frame is deleted (`element_ids`), not moved off screen: sent again
+    under an id the bar still has, it does not start over (the spinner stood still on the second loading
+    screen), and off screen a looping one would go on costing frames;
   - an element id keeps its type: the checkbox and every mark are XPM under one id per slot;
     a plate, chevron or count a slot no longer has is moved off screen, in the same request;
   - an `image` element makes the bar read its file on every draw: plates are rectangles, checkboxes XPM;

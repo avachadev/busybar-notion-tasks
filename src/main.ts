@@ -22,12 +22,12 @@
 import manifest from "./appmeta/manifest.json";
 import { type Level, load, save } from "./cache.ts";
 import { type Config, configKey, readConfig, tokenTag, usable } from "./config.ts";
-import { clearAll, drawElements, prepare } from "./display.ts";
+import { clearAll, deleteElements, drawElements, prepare } from "./display.ts";
 import { focusable, settle, step } from "./focus.ts";
 import { shownEntries } from "./markdown.ts";
 import { NotionError, wireIdle } from "./notion.ts";
 import { Roots } from "./roots.ts";
-import { type Element, type Focus, isTagRow, listFrame, loadingFrame, messageFrame as message, opens, previewFrame, staleMark } from "./screen.ts";
+import { type Element, type Focus, isTagRow, lineLeft, listFrame, loadingFrame, messageFrame as message, opens, previewFrame, staleMark } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
 import { type Database, type Entry, type Option, isTask, mergeRoots, optionOf } from "./tasks.ts";
 
@@ -197,6 +197,12 @@ function main(): void {
    */
   let banner: { title: string; detail: string | null; mark: "page" | "database" | null } | null = null;
   let bannerTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * Where the view being read was opened from: the left of a line of one row,
+   * which the loading screen keeps in place; null for a row with a status or
+   * no line at all, which get the two-line skeleton.
+   */
+  let loadingAt: number | null = null;
 
   const remembered = new Map<string, Level>();
   /** Per view, the toggles opened on the bar; every toggle starts closed. */
@@ -314,19 +320,30 @@ function main(): void {
     }
     const ids: Record<string, true> = {};
     const changed: Element[] = [];
+    /**
+     * An animation that leaves the frame is deleted, not moved: off screen a
+     * looping one would go on costing the bar its frames, and an animation
+     * sent again under an id the bar still has does not start over (the
+     * spinner stood still on the second loading screen, 22.11).
+     */
+    const deleted: string[] = [];
     for (const element of elements) {
       ids[element.id] = true;
       if (onScreen[element.id] !== element) changed.push(element);
     }
     for (const id of inView) {
       if (ids[id]) continue;
-      // An animation off screen is stopped too: a looping one would go on costing the bar its frames.
       const gone = onScreen[id] as Element & { type: string };
-      changed.push((gone.type === "animation" ? { ...gone, y: OFF_SCREEN_Y, loop: false } : { ...gone, y: OFF_SCREEN_Y }) as Element);
+      if (gone.type === "animation") deleted.push(id);
+      else changed.push({ ...gone, y: OFF_SCREEN_Y } as Element);
     }
     try {
       if (changed.length > 0) await drawElements(APP, changed);
       for (const element of changed) onScreen[element.id] = element;
+      if (deleted.length > 0) {
+        for (const id of deleted) delete onScreen[id];
+        await deleteElements(APP, deleted);
+      }
       inView = elements.map((e) => e.id);
     } catch (err) {
       lost = true;
@@ -348,7 +365,7 @@ function main(): void {
       const detail = banner.detail ?? (loaded ? count(entries) : "loading");
       return banner.mark ? previewFrame(banner.title, detail, banner.mark, logo) : messageFrame(banner.title, detail);
     }
-    if (!loaded) return problem ? messageFrame(problem[0], problem[1]) : loadingFrame(title, logo);
+    if (!loaded) return problem ? messageFrame(problem[0], problem[1]) : loadingFrame(title, logo, loadingAt);
     if (entries.length === 0) {
       if (view.kind === "database") {
         return config.scope === "today" ? messageFrame("All done", "for today", "database") : messageFrame("All done", "no open tasks", "database");
@@ -520,6 +537,7 @@ function main(): void {
     databases.clear();
     dropBanner();
     home = next.link.kind === "id" ? next.link.id : "";
+    loadingAt = null;
     roots?.save();
     roots = next.token && !home ? new Roots(owner) : null;
     rootReads = 0;
@@ -810,7 +828,8 @@ function main(): void {
   // ---- Input ---------------------------------------------------------------
 
   /** Opens a view from the list: a subpage, a database, a row's page or a to-do's link. */
-  function go(view: View, title: string): void {
+  function go(view: View, title: string, from: Entry): void {
+    loadingAt = isTagRow(from) ? null : lineLeft(from, config?.logo === true);
     flushPending();
     keep(current(), { entries, database, focus: focused() });
     stack.push(view);
@@ -876,8 +895,8 @@ function main(): void {
       const target = pointing.target;
       if (target === "title") {
         dropPointing();
-        if (entry.kind === "row") go({ kind: "page", id: entry.id, title: entry.title }, entry.title);
-        else if (entry.link) go({ kind: "start", id: entry.link, title: entry.title }, entry.title);
+        if (entry.kind === "row") go({ kind: "page", id: entry.id, title: entry.title }, entry.title, entry);
+        else if (entry.link) go({ kind: "start", id: entry.link, title: entry.title }, entry.title, entry);
         return;
       }
       if (isTagRow(entry)) {
@@ -900,7 +919,7 @@ function main(): void {
       return;
     }
     if (entry.kind === "page" || entry.kind === "database") {
-      go({ kind: entry.kind, id: entry.id, title: entry.title }, entry.title);
+      go({ kind: entry.kind, id: entry.id, title: entry.title }, entry.title, entry);
       return;
     }
     if (opens(entry)) {
@@ -931,6 +950,7 @@ function main(): void {
     }
     flushPending();
     dropBanner();
+    loadingAt = null;
     keep(current(), { entries, database, focus: focused() });
     stack.pop();
     enter(current());

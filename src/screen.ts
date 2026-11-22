@@ -45,6 +45,7 @@ import {
   LOAD_DIM,
   LOAD_DIM_Y,
   SPINNER,
+  SPINNER_INLINE_Y,
   SPINNER_Y,
   PREVIEW_DETAIL_Y,
   PREVIEW_MARK_Y,
@@ -58,7 +59,7 @@ import {
   TEXT_IDLE,
   TEXT_INSET_X,
   TEXT_INSET_Y,
-  PICK_SHIFT,
+  POINTER_X,
   TAG_H,
   TAG_TEXT_Y,
   TAG_TITLE_X,
@@ -85,11 +86,11 @@ const MARKS: Record<string, readonly string[]> = {
   toggleClosed: ["       ", "  #    ", "  ##   ", "  ###  ", "  ##   ", "  #    ", "       "],
   toggleOpen: ["       ", "       ", " ##### ", "  ###  ", "   #   ", "       ", "       "],
   chevron: ["#  ", " # ", "  #", " # ", "#  "],
-  // The title opens: at its left while it is pointed at.
+  // The firmware's cursor (`▶` in its font): at the left of what is pointed at.
   go: ["# ", "##", "# "],
-  // Turn the wheel: either side of the tag while a status is chosen.
-  arrowLeft: ["  #", " ##", "###", " ##", "  #"],
-  arrowRight: ["#  ", "## ", "###", "## ", "#  "],
+  // The firmware's value arrows (`‹` and `›` in its font): either side of the status being chosen.
+  pickLeft: [" #", "# ", " #"],
+  pickRight: ["# ", " #", "# "],
 };
 
 /**
@@ -399,7 +400,7 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
       return text(id, x, ly, focused ? value : fit(value, room), color, focused ? room : null);
     });
   const out: Element[] = [];
-  const x0 = listX(logo) + INDENT * Math.min(entry.depth ?? 0, MAX_DEPTH);
+  const x0 = lineLeft(entry, logo);
   const textX = x0 + TEXT_INSET_X;
   const markX = x0 + CHECKBOX_INSET_X;
   const markY = y + CHECKBOX_INSET_Y;
@@ -419,14 +420,16 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
     out.push(plate(`row${slot}`, x0, y, done, SCREEN_H, mode !== "list"));
     out.push(line(`text${slot}`, titleX, y, entry.title, onTag ? dim(ink) : ink, CHEVRON_X - 2 - titleX));
     out.push(mark(`chevron${slot}`, "chevron", CHEVRON_X, y + CHEVRON_INSET_Y, onTag ? dim(MARK_COLOR) : MARK_COLOR));
-    if (onTitle) out.push(mark(`go${slot}`, "go", x0 + 1, y + 3, TEXT_IDLE.substring(0, 7)));
+    // The cursor before the title (its letters on rows y+2..y+6) or before the status (rows 9..13).
+    if (onTitle) out.push(mark(`go${slot}`, "go", x0 + POINTER_X, y + 3, TEXT_IDLE.substring(0, 7)));
+    if (mode === "mark") out.push(mark(`go${slot}`, "go", x0 + POINTER_X, TAG_TOP + 2, TEXT_IDLE.substring(0, 7)));
     const shown = focus.tag ?? { name: entry.tag ?? "", color: entry.color ?? "default" };
-    const tagX = x0 + TAG_X + (mode === "pick" ? PICK_SHIFT : 0);
+    const tagX = x0 + TAG_X;
     for (const element of tag(slot, tagX, shown.name, shown.color, onTitle)) out.push(element);
     if (mode === "pick") {
       const width = textWidth(printable(shown.name) || "No status") + 4;
-      out.push(mark(`arrowl${slot}`, "arrowLeft", tagX - 4, TAG_TOP + 1, "#FFFFFF"));
-      out.push(mark(`arrowr${slot}`, "arrowRight", tagX + width + 1, TAG_TOP + 1, "#FFFFFF"));
+      out.push(mark(`go${slot}`, "pickLeft", x0 + POINTER_X, TAG_TOP + 2, TEXT_IDLE.substring(0, 7)));
+      out.push(mark(`pick${slot}`, "pickRight", tagX + width + 1, TAG_TOP + 2, TEXT_IDLE.substring(0, 7)));
     }
   } else if (hasPlate(entry)) {
     const link = opens(entry);
@@ -478,15 +481,29 @@ function topTitle(title: string, logo: boolean, y: number): Element {
  * spinner and the shimmer are animations the bar plays itself: no request per
  * frame.
  */
-export function loadingFrame(title: string, logo = false): Element[] {
+export function loadingFrame(title: string, logo = false, at: number | null = null): Element[] {
+  const out: Element[] = logo ? [icon()] : [];
+  if (at !== null) {
+    // Opened from a line of one row: the title stays where that line was, the spinner in its mark's place,
+    // centred on the screen; nothing else.
+    const textX = at + TEXT_INSET_X;
+    out.push(animation("loadspin", at + CHECKBOX_INSET_X, SPINNER_INLINE_Y, SPINNER, true, 4));
+    out.push(text("toptitle", textX, FOCUS_Y, printable(title) || "Untitled", TEXT_IDLE, SCREEN_W - 1 - textX));
+    out.push(animation("loaddim", textX, FOCUS_Y + 1, LOAD_DIM, false, 3));
+    return out;
+  }
   const x0 = listX(logo);
   const textX = x0 + TEXT_INSET_X;
-  const out: Element[] = logo ? [icon()] : [];
   out.push(animation("loadspin", x0 + CHECKBOX_INSET_X, SPINNER_Y, SPINNER, true, 4));
   out.push(topTitle(title, logo, TOP_TITLE_Y));
   out.push(animation("loaddim", textX, LOAD_DIM_Y, LOAD_DIM, false, 3));
   out.push(animation("loadbars", textX, LOAD_BARS_Y, LOAD_BARS, false, 1));
   return out;
+}
+
+/** Where a line's mark starts: the list's left edge, and INDENT a level of nesting. */
+export function lineLeft(entry: Entry, logo: boolean): number {
+  return listX(logo) + INDENT * Math.min(entry.depth ?? 0, MAX_DEPTH);
 }
 
 /**

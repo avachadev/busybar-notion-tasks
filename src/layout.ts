@@ -112,13 +112,19 @@ export const CHEVRON_INSET_Y = 2;
  * TAG_TITLE_X on the top line, the status as a tag on the bottom one (Figma,
  * "Вариант I"). The tag is a rectangle 7 px tall with the option's name 2 px in.
  */
-export const TAG_TITLE_X = 4;
+export const TAG_TITLE_X = 5;
 export const TAG_X = 3;
+/**
+ * Pointing at a row's title or its status, the firmware's cursor `▶` (2x3)
+ * stands against the plate's left edge, its tip 2 px before the text: before
+ * the title, and before the tag's text, the tag's own inset being those 2 px.
+ * Choosing the status, the firmware's `‹` takes its place and `›` follows the
+ * tag 1 px after it, as the value of a setting in SETTINGS.
+ */
+export const POINTER_X = 1;
 export const TAG_TOP = 8;
 export const TAG_H = 7;
 export const TAG_TEXT_Y = 7;
-/** While a status is chosen the tag moves right, to leave room for the arrow on its left. */
-export const PICK_SHIFT = 4;
 
 /** Notion's colour names, as the bar shows them. */
 const NOTION_COLORS: Record<string, string> = {
@@ -172,6 +178,13 @@ export function dim(color: string): string {
 export const TOP_TITLE_Y = -1;
 export const SPINNER = "animations/spinner_front_8x8.anim";
 export const SPINNER_Y = 1;
+/**
+ * Opened from a line of one row, the loading screen keeps that line where it
+ * was (FOCUS_Y) and puts the spinner in its mark's place, centred on the
+ * screen: rows 4..11. The two-line skeleton is for what opens from a row with
+ * a status, whose title was on top already, and for the app's start.
+ */
+export const SPINNER_INLINE_Y = 4;
 export const LOAD_DIM = "animations/load_dim.anim";
 export const LOAD_DIM_Y = 0;
 export const LOAD_BARS = "animations/load_bars.anim";
