@@ -1,6 +1,9 @@
 # The top level
 
-Plan (22.11.2026), not built. How the app finds and keeps the workspace's top-level pages and databases,
+Built (22.11.2026): `notion.ts` (the queue), `scan.ts`, `roots.ts`, `main.ts`. Not built: the
+ancestor walk for a quick first fill (the first pass took 44 s on a 929-page workspace, so it was not
+needed there), and a sweep for an internal connection, whose top level is still read the old way: the
+first 100 search results, a page whose parent is not among them counting as top level. How the app finds and keeps the workspace's top-level pages and databases,
 and how often it checks them while the app is open.
 
 ## The problem
@@ -147,6 +150,23 @@ check first.
 - 429: the queue waits Retry-After, the sweep backs off longest.
 - Teamspace pages: top level as the API says; the sidebar's grouping and order are not in the API, titles sort.
 - The bar restarts mid-sweep: the saved cursor.
+
+## Results on the bar
+
+22.11, a test bar, 1.4.1, a test workspace (929 pages, 111 data sources), the top level on screen
+from the start, the app's storage cleared:
+
+- the first pass, 12 answers: 44 s, logged as `sweep pass done in 44 s, 4 top-level`; all three
+  top-level pages and People found, none of which the old first-100 read had in full;
+- while a pass runs, the top level is checked every third read (every 15 s) and only for the last edited:
+  with checks every 5 s the same pass took about two minutes;
+- a top-level page renamed in Notion showed renamed on the bar 7.5-10 s later (a read every 5 s plus
+  Notion's search lag);
+- no heap error or exception in the log over the passes.
+
+Not tried on the bar: a top-level page created, trashed or moved (that would change the person's real
+sidebar); those paths are covered by `test/roots.test.ts`. The wheel's step time during a sweep was not
+measured.
 
 ## Work
 

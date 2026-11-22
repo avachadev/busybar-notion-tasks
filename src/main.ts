@@ -25,7 +25,8 @@ import { type Config, configKey, readConfig, tokenTag, usable } from "./config.t
 import { clearAll, drawElements, prepare } from "./display.ts";
 import { focusable, settle, step } from "./focus.ts";
 import { shownEntries } from "./markdown.ts";
-import { NotionError } from "./notion.ts";
+import { NotionError, wireIdle } from "./notion.ts";
+import { Roots } from "./roots.ts";
 import { type Element, type Focus, isTagRow, listFrame, messageFrame as message, opens, staleMark } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
 import { type Database, type Entry, type Option, isTask, mergeRoots, optionOf } from "./tasks.ts";
@@ -46,12 +47,15 @@ const REFRESH_MS = 5000;
 /** A read that took T is not repeated sooner than this many T later. */
 const SLOW_READ_FACTOR = 3;
 /**
- * The whole top level takes several requests to find, so it is read in full
- * this seldom; in between, one search for what was edited last brings new
- * pages in this often.
+ * For an internal connection the whole top level is read the old way, which
+ * takes several requests, this seldom; in between, one search for what was
+ * edited last brings new pages in this often. A personal token's top level is
+ * kept by `roots.ts`, checked every REFRESH_MS while it is on screen.
  */
 const ROOT_REFRESH_MS = 10 * 60 * 1000;
 const ROOT_CHECK_MS = 15 * 1000;
+/** While the top level is on screen, the trash and one kept root are checked every this many reads of it. */
+const ROOT_DEEP_EVERY = 3;
 /** A read waits until the wheel and buttons have been still this long: parsing an answer stalls the list. */
 const QUIET_MS = 2000;
 /** First retry after a failure, doubled on each further one up to MAX_RETRY_MS. */
@@ -169,8 +173,17 @@ function main(): void {
   let reading = false;
   let readTimer: ReturnType<typeof setTimeout> | undefined;
   let lastInputAt = 0;
-  /** When the top level was last read in full. */
+  /** When the top level was last read in full (an internal connection). */
   let rootReadAt = 0;
+  /** A personal token's top level, kept across runs; null with a start page or no token. */
+  let roots: Roots | null = null;
+  /** Reads of the top level so far: every ROOT_DEEP_EVERY-th checks the trash and one kept root. */
+  let rootReads = 0;
+  let sweeping = false;
+  /** When the sweep pass under way started, for the log line at its end. */
+  let passStartedAt = 0;
+  /** After a failed sweep answer: no new one before this. */
+  let sweepAfter = 0;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** A title shown on opening a page, or a note: over the list, for a moment. */
@@ -327,6 +340,8 @@ function main(): void {
       if (view.kind === "database") {
         return config.scope === "today" ? messageFrame("All done", "for today") : messageFrame("All done", "no open tasks");
       }
+      // The first sweep is still under way: the top level fills in as it goes.
+      if (view.kind === "root" && roots && roots.searching) return messageFrame("Notion", "looking for pages");
       // An internal connection sees only pages shared with it: ••• > Connections in Notion.
       if (view.kind === "root") return messageFrame("No pages", "share pages with the connection");
       return messageFrame(title, "no tasks or pages");
@@ -492,6 +507,10 @@ function main(): void {
     databases.clear();
     dropBanner();
     home = next.link.kind === "id" ? next.link.id : "";
+    roots?.save();
+    roots = next.token && !home ? new Roots(owner) : null;
+    rootReads = 0;
+    sweepAfter = 0;
     const saved = firstRead ? load(owner, home) : null;
     if (saved) {
       stack = saved.stack;
@@ -523,10 +542,25 @@ function main(): void {
         selected = settle(shown(), 0);
         redraw();
       };
-      const result = quick
-        ? { view, database: null, entries: mergeRoots(base, await readRecentRoots(token, still)) }
-        : await readView(token, view, scope, new Date(), databases, still, first);
-      if (view.kind === "root" && !quick && readKey === key) rootReadAt = startedAt;
+      const kept = view.kind === "root" && roots !== null && (await roots.whoami(token, still)) === false ? roots : null;
+      if (kept) {
+        // The top level as kept: the last edited every read, the trash and one kept root every few.
+        // While a sweep pass runs, which finds new ones itself, only the last edited, every few reads:
+        // the wire is the sweep's (measured 22.11: the checks every 5 s stretched a 929-page pass to two minutes).
+        rootReads += 1;
+        const deep = rootReads % ROOT_DEEP_EVERY === 0;
+        if (!kept.sweeping || deep) await kept.recent(token, still);
+        if (deep && !kept.sweeping) {
+          await kept.trash(token, still);
+          await kept.check(token, still);
+        }
+      }
+      const result = kept
+        ? { view, database: null, entries: kept.entries() }
+        : quick
+          ? { view, database: null, entries: mergeRoots(base, await readRecentRoots(token, still)) }
+          : await readView(token, view, scope, new Date(), databases, still, first);
+      if (view.kind === "root" && !kept && !quick && readKey === key) rootReadAt = startedAt;
       const now = Date.now();
       const fresh = result.entries.map((e) => {
         const t = ticks.get(e.id);
@@ -555,7 +589,8 @@ function main(): void {
       problem = null;
       failures = 0;
       // A view that takes long to read is read again less often, so reading does not take the bar over.
-      nextReadAt = now + Math.max(view.kind === "root" ? ROOT_CHECK_MS : REFRESH_MS, (now - startedAt) * SLOW_READ_FACTOR);
+      // The kept top level is checked as often as any view; for it a slow read is the checks' own pace, not a reason to wait longer.
+      nextReadAt = kept ? now + REFRESH_MS : now + Math.max(view.kind === "root" ? ROOT_CHECK_MS : REFRESH_MS, (now - startedAt) * SLOW_READ_FACTOR);
       keep(result.view, { entries, database, focus: focused() });
       persist();
     } catch (err) {
@@ -595,6 +630,48 @@ function main(): void {
         reading = false;
         redraw();
         maybeRead();
+        maybeSweep();
+      });
+  }
+
+  /**
+   * One sweep answer, when nothing else wants the wire: the user has been still
+   * QUIET_MS, no read is out or waiting. A sweep answer holds the wire about 2 s
+   * and cannot be stopped, so it never starts while the user is busy. Then the
+   * next one, the same way, until the pass is over.
+   */
+  function maybeSweep(): void {
+    const c = config;
+    const r = roots;
+    const now = Date.now();
+    if (stopped || sweeping || !r || !usable(c) || reading || now < sweepAfter || !r.sweepDue(now)) return;
+    if (now - lastInputAt < QUIET_MS || !wireIdle()) return;
+    sweeping = true;
+    const sweepKey = key;
+    // A pass from its first answer in this run: one resumed after a restart counts from here.
+    if (passStartedAt === 0) passStartedAt = now;
+    void r.sweep(c.token, now)
+      .then((changed) => {
+        sweepAfter = 0;
+        // One line a pass, about a day apart: how long the workspace took, for comparing bars and workspaces.
+        if (!r.sweeping && passStartedAt > 0) {
+          console.error(`${APP}: sweep pass done in ${Math.round((Date.now() - passStartedAt) / 1000)} s, ${r.entries().length} top-level`);
+          passStartedAt = 0;
+        }
+        if (!changed || sweepKey !== key || roots !== r || current().kind !== "root") return;
+        const keepId = shown()[selected]?.id;
+        entries = r.entries();
+        loaded = true;
+        selectById(keepId);
+        keep(current(), { entries, database: null, focus: focused() });
+        redraw();
+      }, (err: unknown) => {
+        report("sweep", err);
+        sweepAfter = Date.now() + RETRY_MS;
+      })
+      .then(() => {
+        sweeping = false;
+        if (!stopped) setTimeout(guarded("sweep", maybeSweep), 0);
       });
   }
 
@@ -873,6 +950,7 @@ function main(): void {
     if (stopped) return;
     flushPending();
     persistNow();
+    roots?.save();
     stopped = true;
     for (const t of [timer, readTimer, confettiTimer, readyTimer]) if (t !== undefined) clearTimeout(t);
     // Retries still waiting are given up; a request already out settles by itself.
@@ -908,7 +986,9 @@ function main(): void {
     const idle = Date.now() - lastInputAt >= IDLE_MS;
     if (idle || config === null) await refreshConfig();
     if (idle && unsaved) persistNow();
+    if (idle) roots?.save();
     maybeRead();
+    maybeSweep();
     redraw();
   }
 

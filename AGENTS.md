@@ -55,6 +55,9 @@ off. What it does, its settings and its files: [README.md](README.md).
     lines are decoded, ASCII natively; a regular expression run over a line costs about 0.3-3 ms;
   - a page with 120 subpages still takes several seconds to read: its first screen shows after 8
     lines (`FIRST_SCREEN`), and a slow view is read again no sooner than 3 times its read time.
+- The top level: `roots.ts`, `docs/roots.md`; each sweep pass logs `sweep pass done in N s` with `console.error`.
+- `localStorage` lives in `/ext/apps_data/jsrunner/app.avachadev.notiontasks.localstorage.json` and survives
+  uninstalling the app; to start from nothing, stop the app and delete that file.
 - Saved place: `cache.ts` stores under `place2`; bump the key whenever an entry or a database changes
   shape, or an old place is read into new code.
 - Settings:

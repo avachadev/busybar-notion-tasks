@@ -86,9 +86,13 @@ without any request. Leaving the page sends the ticks made on it right away. A t
 through is sent twice more; if it still fails, the bar says `Not saved` and the task shows what Notion has.
 
 The open page or database is read again every 5 seconds, once the wheel has been still for 2 seconds:
-a task ticked off in Notion is ticked off on the bar within seconds. On the top level, a search for what
-was edited last runs every 15 seconds, so a new page shows within half a minute; the whole top level is
-read again every ten minutes. The app remembers
+a task ticked off in Notion is ticked off on the bar within seconds.
+
+Notion's API has no list of the top level, so the app finds it by going through everything the token can
+see, once, a search answer at a time while you are not turning the wheel; about 45 seconds for a
+workspace of a thousand pages. It keeps only the list and goes over it again once a day. While the top
+level is on screen, the pages edited last are checked every 5 seconds (a new or renamed page shows within
+about 10 seconds), and the trash and one kept page every 15 seconds (one moved or deleted goes). The app remembers
 where you were and what every level of the way showed, so it opens there at once and going back up
 needs no waiting, even after a restart.
 
