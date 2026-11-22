@@ -200,8 +200,6 @@ export const PREVIEW_TITLE_Y = 0;
 export const PREVIEW_MARK_Y = 1;
 export const PREVIEW_DETAIL_Y = TAG_TEXT_Y;
 
-/** The dot that marks a list Notion could not confirm on the last read. */
-export const STALE_COLOR = "#FF8A3DFF";
 
 export const MESSAGE_COLOR = "#FFFFFFFF";
 

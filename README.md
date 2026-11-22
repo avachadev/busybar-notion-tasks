@@ -149,7 +149,7 @@ Changes apply within a few seconds, without restarting the app.
 | `Notion down` | Notion answers with a server error. The app keeps trying. |
 | `Notion error` | Notion refused the request; the second line is its error code. |
 | `Not saved` | A tick did not reach Notion after three tries. |
-| Orange dot in the top right corner (above the logo, with the logo on) | The list is from the last good read; the latest one failed. |
+| `Offline`, `Notion busy` or `Notion down`, then `list may be old` | Over a list: Notion has not confirmed it for a minute. The list stays, the app keeps trying, and the note is shown once until it gets through again. A single failed read is retried without a word. |
 | `All done` | The database has nothing left for today. |
 
 ## Security

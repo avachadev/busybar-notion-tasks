@@ -27,7 +27,7 @@ import { focusable, settle, step } from "./focus.ts";
 import { shownEntries } from "./markdown.ts";
 import { NotionError, wireIdle } from "./notion.ts";
 import { Roots } from "./roots.ts";
-import { type Element, type Focus, isTagRow, lineLeft, listFrame, loadingFrame, messageFrame as message, opens, previewFrame, staleMark } from "./screen.ts";
+import { type Element, type Focus, isTagRow, lineLeft, listFrame, loadingFrame, messageFrame as message, opens, previewFrame } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
 import { type Database, type Entry, type Option, isTask, mergeRoots, optionOf } from "./tasks.ts";
 
@@ -74,6 +74,12 @@ const TICK_RETRY_MS = 5000;
  * read wins, so a change made in Notion right after shows on the bar.
  */
 const SETTLED_GRACE_MS = 5000;
+/**
+ * A list Notion has not confirmed for this long gets a note saying so, once:
+ * a single failed read (a DNS timeout, a busy Notion) is retried and passes
+ * unseen. A mark for it was a coloured dot nobody could read (22.11).
+ */
+const STALE_NOTE_MS = 60 * 1000;
 /** On opening a page its name is shown this long before its contents; a note stays longer. */
 const BANNER_MS = 1200;
 const NOTE_MS = 2500;
@@ -170,9 +176,23 @@ function main(): void {
   let selected = 0;
   /** The entries are worth showing: read from Notion, or remembered. */
   let loaded = false;
-  /** The entries on screen were not confirmed by the latest read. */
-  let stale = false;
+  /**
+   * Since when reads of the list on screen fail, 0 while they pass; whether its
+   * note was shown in this run of failures; the timer that shows it.
+   */
+  let failingSince = 0;
+  let staleNoted = false;
+  let staleTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The list is confirmed again, or another one is up: no note is due. */
+  function confirmed(): void {
+    failingSince = 0;
+    staleNoted = false;
+    if (staleTimer !== undefined) clearTimeout(staleTimer);
+    staleTimer = undefined;
+  }
   let problem: Problem | null = null;
+  /** What the latest failed read was, for the note about a list left unconfirmed. */
+  let lastProblem: Problem = ["Offline", "retrying"];
   let failures = 0;
   let nextReadAt = 0;
   let reading = false;
@@ -380,7 +400,6 @@ function main(): void {
     if (!state.any) return messageFrame(title, "no tasks or pages", viewMark(view));
     // Ticks are looked up for the lines on screen only, not the whole list.
     const list = listFrame(state.lines, selected, (e: Entry) => isTask(e) && isDone(e), logo, openHere(), focusOf(state.lines[selected]));
-    if (stale) list.push(staleMark(logo));
     return list;
   }
 
@@ -500,7 +519,7 @@ function main(): void {
     loaded = level !== undefined;
     selected = 0;
     selectById(level?.focus);
-    stale = false;
+    confirmed();
     problem = null;
     failures = 0;
     nextReadAt = 0;
@@ -616,7 +635,7 @@ function main(): void {
       selectById(keepId);
       if ((pointing || picking) && focused() !== (pointing ?? picking)?.id) dropPointing();
       loaded = true;
-      stale = false;
+      confirmed();
       problem = null;
       failures = 0;
       // A view that takes long to read is read again less often, so reading does not take the bar over.
@@ -631,9 +650,20 @@ function main(): void {
       failures += 1;
       nextReadAt = Date.now() + retryMs;
       if (drop) loaded = false;
-      // With a list up, it stays and gets the stale mark; without one, the screen says why.
-      if (loaded) stale = true;
-      else problem = p;
+      // Without a list the screen says why at once. With one, the list stays, and if reads go on failing
+      // for STALE_NOTE_MS a note says so once, in the words of the latest failure.
+      if (!loaded) {
+        problem = p;
+      } else if (failingSince === 0) {
+        failingSince = Date.now();
+        staleTimer = setTimeout(guarded("stale", () => {
+          staleTimer = undefined;
+          if (failingSince === 0 || staleNoted || stopped) return;
+          staleNoted = true;
+          showBanner(lastProblem[0], "list may be old", NOTE_MS);
+        }), STALE_NOTE_MS);
+      }
+      lastProblem = p;
     }
   }
 
@@ -987,7 +1017,7 @@ function main(): void {
     persistNow();
     roots?.save();
     stopped = true;
-    for (const t of [timer, readTimer, confettiTimer, readyTimer]) if (t !== undefined) clearTimeout(t);
+    for (const t of [timer, readTimer, confettiTimer, readyTimer, staleTimer]) if (t !== undefined) clearTimeout(t);
     // Retries still waiting are given up; a request already out settles by itself.
     ticks.forEach((t) => {
       if (t.stage === "sending" && t.timer !== undefined) clearTimeout(t.timer);

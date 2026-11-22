@@ -53,7 +53,6 @@ import {
   TOP_TITLE_Y,
   SCREEN_H,
   SCREEN_W,
-  STALE_COLOR,
   TEXT_DONE,
   TEXT_EDGE,
   TEXT_IDLE,
@@ -216,27 +215,6 @@ function text(id: string, x: number, y: number, value: string, color: string, sc
 /** The app's icon, with the logo on: on every screen, above everything, messages' backdrop included. */
 function icon(): Element {
   return image("icon", ICON_X, ICON_Y, IMAGES.icon, 5);
-}
-
-/**
- * A 2x2 dot, above the icon or in the top right corner: the list on screen is
- * what Notion said last, and the latest read of it failed.
- */
-export function staleMark(logo = false): Element {
-  return remember(`stale|${logo}`, () => ({
-    id: "stale",
-    type: "rectangle",
-    display: "front",
-    align: "top_left",
-    x: logo ? ICON_X + 3 : SCREEN_W - 2,
-    y: logo ? ICON_Y - 3 : 0,
-    width: 2,
-    height: 2,
-    fill: "solid",
-    fill_colors: [STALE_COLOR],
-    border_width: 0,
-    z_index: 5,
-  }) as Element);
 }
 
 /** The longest start of `value` that fits `width` px: halving, not a character at a time. */
