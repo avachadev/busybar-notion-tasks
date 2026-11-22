@@ -63,6 +63,14 @@ const SOURCE_START_U = 14;
 const DATABASE_PARENT = ascii('"database_parent":{"type":"');
 const DATABASE_PARENT_U = 9;
 const WORKSPACE = "workspace";
+/** After a top-level page's `w`, up to its trash flag (measured key order, 22.11). */
+const TO_TRASH = ascii('orkspace","workspace":true},"in_trash":');
+const T = 0x74;
+/** A result's edit time: `"last_edited_time":"2026-11-22T15:47:00.000Z"`, the first after its start. */
+const EDITED = ascii('"last_edited_time":"');
+const EDITED_LENGTH = 24;
+/** How far into the answer the first result's edit time is looked for. */
+const HEAD = 4096;
 /** From the start of a data source's `"database_id":"` to the `w`: the key, the id, `"},`, the key, `{"type":"`. */
 const DATABASE_ID_BACK = DATABASE_ID.length + 36 + 3 + 27;
 /** How far back a page's start may be from its parent: a cover and an icon with long URLs fit. */
@@ -192,6 +200,9 @@ export class SearchScan {
   odd = 0;
   cursor: string | null = null;
   hasMore = false;
+  /** The edit times of the answer's first and last results, "" when not found: a check reads on until it is past what it saw. */
+  firstEdited = "";
+  lastEdited = "";
   private readonly win = new Window();
   /** Positions of `w` whose following bytes had not arrived. */
   private waiting: number[] = [];
@@ -203,6 +214,11 @@ export class SearchScan {
 
   feed(chunk: Uint8Array): void {
     const from = this.win.end;
+    // The first result's edit time, in the answer's head; one split by a chunk's edge is missed, which only costs the watermark.
+    if (!this.firstEdited && from < HEAD) {
+      const at = this.find(EDITED, chunk);
+      if (at >= 0) this.firstEdited = String.fromCharCode.apply(null, chunk.subarray(at + EDITED.length, at + EDITED.length + EDITED_LENGTH) as unknown as number[]);
+    }
     // Kept: enough to look back from a hit (a hit still waiting lies in the last few bytes), and all a title being read needs.
     const keep = Math.min(this.win.end - MAX_BACK, this.jobs.length > 0 ? this.jobs[0].pos - TITLE_KEY.length : Infinity);
     this.win.add(chunk, keep);
@@ -272,6 +288,21 @@ export class SearchScan {
     return "done";
   }
 
+  /**
+   * Where `bytes` and the 24 bytes of a time after them stand whole in
+   * `chunk`, found by their second byte; -1 when not. Only the answer's head
+   * is searched so.
+   */
+  private find(bytes: readonly number[], chunk: Uint8Array): number {
+    const end = Math.min(chunk.length, HEAD) - bytes.length - EDITED_LENGTH;
+    for (let i = chunk.indexOf(bytes[1], 1); i >= 1 && i - 1 <= end; i = chunk.indexOf(bytes[1], i + 1)) {
+      let k = 0;
+      while (k < bytes.length && chunk[i - 1 + k] === bytes[k]) k += 1;
+      if (k === bytes.length) return i - 1;
+    }
+    return -1;
+  }
+
   /** The answer is over: a title still open is taken as read, and the cursor is read from the answer's tail. */
   end(): void {
     for (const job of this.jobs) if (job.kind !== "source") this.found.push({ kind: job.kind, id: job.id, title: job.title || null, icon: job.icon });
@@ -281,6 +312,10 @@ export class SearchScan {
     const cursor = /"next_cursor":(?:null|"([^"]+)")/.exec(tail);
     this.cursor = cursor && cursor[1] ? cursor[1] : null;
     this.hasMore = /"has_more":true/.test(tail);
+    // The last result's edit time: the last one in the kept window, a page being under 1 KB.
+    const window = String.fromCharCode.apply(null, this.win.slice(Math.max(this.win.first, this.win.end - 2048), this.win.end) as unknown as number[]);
+    const last = window.lastIndexOf('"last_edited_time":"');
+    this.lastEdited = last >= 0 ? window.substring(last + EDITED.length, last + EDITED.length + EDITED_LENGTH) : "";
   }
 
   private check(hit: number): void {
@@ -291,7 +326,16 @@ export class SearchScan {
     }
     if (!after || this.win.matches(hit - PARENT_TAIL.length, PARENT_TAIL) !== true) return;
     const lead = this.win.at(hit - PARENT_TAIL.length - 1);
-    if (lead === QUOTE) this.page(hit);
+    if (lead === QUOTE) {
+      // A page in the trash: the search index may still list it as edited last.
+      const trashed = this.win.matches(hit + 1, TO_TRASH);
+      if (trashed === null || (trashed === true && this.win.at(hit + 1 + TO_TRASH.length) < 0)) {
+        this.waiting.push(hit);
+        return;
+      }
+      if (trashed === true && this.win.at(hit + 1 + TO_TRASH.length) === T) return;
+      this.page(hit);
+    }
     else if (lead === UNDERSCORE && this.win.matches(hit - PARENT_TAIL.length - DATABASE_HEAD.length, DATABASE_HEAD) === true) this.database(hit);
   }
 

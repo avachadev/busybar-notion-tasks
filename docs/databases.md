@@ -59,7 +59,8 @@ Candidates for `state`, strongest first:
 1. The property the view shows with `status_show_as: checkbox`, or the one it groups by.
 2. Visible in the view before hidden.
 3. By type: status; checkbox with a done-like name; select with a done-like option; formula (boolean or
-   string); rollup of statuses; relation to a statuses database; any checkbox.
+   string); rollup of statuses; relation to a statuses database; the only checkbox (of several, one may
+   mean "featured"). A done-like name is compared by its letters only, so "✅ Done" counts.
 4. Then by name (status, state, статус, done, готово), then schema order.
 
 Groups of a Status come from `groups` by position: first To-do, second In progress, third Complete. Old
@@ -135,8 +136,14 @@ wheel step away. An opened row reads as a page does now (`readPage`); an empty o
 
 The view's own filter is not applied: it can use `"me"`, which finds nothing with an internal token, and it
 can exceed the two levels of nesting our filter adds. The "Show" setting stays the app's filter. "Open"
-means not in the done group, tested with `group_does_not_equal` (header
-`Notion-Beta: status-group-filters-2026-10-06`) instead of one `does_not_equal` per option.
+means not in the done group, tested with one `does_not_equal` per done option (Notion takes up to 100
+conditions in a filter; `group_does_not_equal` needs a beta header, not used).
+
+If Notion refuses the view's sorts as the query's (400), the database falls back to the app's own order.
+The schema and view are looked up again every 10 minutes, at once when a row shows an option the schema
+does not know, and after a write Notion refused: an option added or renamed in Notion shows, and a select
+is not written under an old name (Notion would create it again). A data source the connection cannot
+read is skipped. A dashboard view shows no data source: the next view is taken, up to three.
 
 ## Cost on the bar
 

@@ -18,6 +18,7 @@ import {
   readViewInfo,
   byTitle,
   openFirst,
+  optionOf,
   pickRoots,
   withIcon,
   rootsInSearch,
@@ -72,6 +73,24 @@ const SEARCH_PER_PAGE = 20;
 const MAX_PAGE_SEARCHES = 5;
 const DATABASES_PER_SEARCH = 100;
 const MAX_DATABASE_SEARCHES = 1;
+/**
+ * A database's schema and view are looked up again after this long, so options
+ * added or renamed in Notion show; at once when a row has an option it does not know.
+ */
+const SCHEMA_MS = 10 * 60 * 1000;
+const openedAt = new Map<string, number>();
+
+/** Whether a row shows a status or a select option the schema does not have. */
+function hasUnknownOption(rows: readonly Entry[], schema: Database["schema"]): boolean {
+  const f = schema.done;
+  if (!f || f.kind === "checkbox") return false;
+  for (let i = 0; i < rows.length; i += 1) {
+    const tag = rows[i].tag;
+    if (tag && optionOf(f, tag) === null) return true;
+  }
+  return false;
+}
+
 /** A database's data sources tried for one with a done field. */
 const MAX_SOURCES = 3;
 /**
@@ -87,20 +106,27 @@ function list(value: unknown): Json[] {
   return Array.isArray(value) ? (value as Json[]) : [];
 }
 
+/** Views looked at for one that shows a data source: a dashboard view shows none. */
+const MAX_VIEWS = 3;
+
 /**
- * The database's first view, for its order and how it shows its status
- * (`GET /v1/views`, from 19.03.2026). Null when Notion gives none: the database
- * is then shown in the app's own order.
+ * The database's first view that shows a data source, for its order and how
+ * it shows its status (`GET /v1/views`, from 19.03.2026). The API does not
+ * promise the order of the tabs; the list's first is taken as the first tab.
+ * Null when Notion gives none: the database is then shown in the app's own order.
  */
 async function firstView(token: string, id: string, alive: Alive): Promise<Json | null> {
   try {
     check(alive);
-    const views = await call(token, "GET", `views?database_id=${id}`, undefined, reading(alive));
-    const first = list(views.results)[0];
-    const viewId = first && typeof first.id === "string" ? first.id : "";
-    if (!viewId) return null;
-    check(alive);
-    return await call(token, "GET", `views/${viewId}`, undefined, reading(alive));
+    const views = list((await call(token, "GET", `views?database_id=${id}`, undefined, reading(alive))).results);
+    for (let i = 0; i < views.length && i < MAX_VIEWS; i += 1) {
+      const viewId = typeof views[i].id === "string" ? (views[i].id as string) : "";
+      if (!viewId) continue;
+      check(alive);
+      const view = await call(token, "GET", `views/${viewId}`, undefined, reading(alive));
+      if (typeof view.data_source_id === "string" && view.data_source_id) return view;
+    }
+    return null;
   } catch (err) {
     if (err instanceof NotionError && err.status !== 401 && err.status !== 429 && err.status < 500) return null;
     throw err;
@@ -124,7 +150,15 @@ async function openDatabase(token: string, id: string, alive: Alive): Promise<{ 
     const sourceId = source.id as string;
     const own = !viewSource || sourceId === viewSource;
     check(alive);
-    const schema = readSchema(await call(token, "GET", `data_sources/${sourceId}`, undefined, reading(alive)), own ? info : null);
+    let answer: Json;
+    try {
+      answer = await call(token, "GET", `data_sources/${sourceId}`, undefined, reading(alive));
+    } catch (err) {
+      // A source the connection cannot read is listed all the same: the next one may do.
+      if (err instanceof NotionError && (err.status === 403 || err.status === 404)) continue;
+      throw err;
+    }
+    const schema = readSchema(answer, own ? info : null);
     if (!schema) continue;
     const database: Database = { dataSourceId: sourceId, schema, sorts: own && info ? info.sorts : null };
     if (schema.done) return { database, title: plainText(db.title) };
@@ -272,22 +306,34 @@ export async function readView(
   if (resolved.kind !== "database") throw new Error("unexpected view");
 
   let database = databases.get(resolved.id);
-  if (!database) {
+  if (!database || now.getTime() - (openedAt.get(resolved.id) ?? 0) >= SCHEMA_MS) {
     database = (await openDatabase(token, resolved.id, alive)).database;
     databases.set(resolved.id, database);
+    openedAt.set(resolved.id, now.getTime());
   }
-  check(alive);
-  const body = queryBody(database.schema, scope, localDate(now), localDayStart(now), database.sorts);
-  let response: Json;
-  try {
-    response = await call(token, "POST", queryPath(database.dataSourceId, database.schema), body, reading(alive));
-  } catch (err) {
-    // The database's properties changed or it moved: look it up again next time.
-    if (err instanceof NotionError && (err.status === 400 || err.status === 404)) databases.delete(resolved.id);
-    throw err;
+  let response: Json | null = null;
+  while (!response) {
+    check(alive);
+    const body = queryBody(database.schema, scope, localDate(now), localDayStart(now), database.sorts);
+    try {
+      response = await call(token, "POST", queryPath(database.dataSourceId, database.schema), body, reading(alive));
+    } catch (err) {
+      const refused = err instanceof NotionError && err.status === 400;
+      // The view's sorts are taken as the query's; if Notion will not have them, the app's own order does.
+      if (refused && database.sorts) {
+        database = { ...database, sorts: null };
+        databases.set(resolved.id, database);
+        continue;
+      }
+      // The database's properties changed or it moved: look it up again next time.
+      if (refused || (err instanceof NotionError && err.status === 404)) databases.delete(resolved.id);
+      throw err;
+    }
   }
   // The person's own sort is kept as it is; the app's own puts open rows first.
   const rows = tasksFromQuery(response, database.schema);
+  // An option the schema does not know: it was added or renamed in Notion. Look the database up again next time.
+  if (hasUnknownOption(rows, database.schema)) databases.delete(resolved.id);
   return { entries: database.sorts ? rows : openFirst(rows), view: resolved, database };
 }
 

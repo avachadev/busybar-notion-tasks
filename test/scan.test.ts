@@ -152,3 +152,28 @@ test("a scan of shared data sources takes each database with its title, icon and
     assert.equal(s.hasMore, false);
   }
 });
+
+test("a top-level page in the trash is not taken, and the first and last results' edit times are read", () => {
+  const at = (p: ReturnType<typeof page>, edited: string, trashed = false) => ({ ...p, last_edited_time: edited, in_trash: trashed });
+  const answer = new TextEncoder().encode(JSON.stringify({
+    object: "list",
+    results: [
+      at(page(30, WORKSPACE, ["Trashed"]), "2026-11-22T16:05:00.000Z", true),
+      at(page(31, WORKSPACE, ["Kept"]), "2026-11-22T16:01:00.000Z"),
+      at(page(32, { type: "page_id", page_id: id(31) }, ["Under"]), "2026-11-22T15:10:00.000Z"),
+    ],
+    next_cursor: id(33),
+    has_more: true,
+    type: "page_or_data_source",
+    page_or_data_source: {},
+  }));
+  for (const size of [answer.length, 1460, 100, 7]) {
+    const s = new SearchScan();
+    for (let i = 0; i < answer.length; i += size) s.feed(answer.subarray(i, i + size));
+    s.end();
+    assert.deepEqual(s.found.map((f) => f.title), ["Kept"], `chunks of ${size}`);
+    assert.equal(s.lastEdited, "2026-11-22T15:10:00.000Z");
+    // Found whole in one chunk only; a time split by a chunk's edge is let go.
+    if (size >= 1460) assert.equal(s.firstEdited, "2026-11-22T16:05:00.000Z");
+  }
+});

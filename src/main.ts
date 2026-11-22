@@ -158,7 +158,7 @@ function explain(err: unknown, failures: number): { problem: Problem; retryMs: n
     if (err.status === 403 || err.status === 404) {
       return { problem: ["No access", "share it with the token"], retryMs: NO_ACCESS_RETRY_MS, drop: true };
     }
-    if (err.status === 429) return { problem: ["Notion busy", "waiting"], retryMs: Math.max(err.retryAfterMs, backOff), drop: false };
+    if (err.status === 429 || err.status === 529) return { problem: ["Notion busy", "waiting"], retryMs: Math.max(err.retryAfterMs, backOff), drop: false };
     if (err.status >= 500) return { problem: ["Notion down", "retrying"], retryMs: backOff, drop: false };
     return { problem: ["Notion error", err.code || err.message], retryMs: backOff, drop: false };
   }
@@ -223,6 +223,9 @@ function main(): void {
   let passStartedAt = 0;
   /** After a failed sweep answer: no new one before this. */
   let sweepAfter = 0;
+  /** Sweep answers failed in a row; the screen shows why while nothing was found yet. */
+  let sweepFailures = 0;
+  let sweepProblem = false;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   /**
@@ -565,6 +568,17 @@ function main(): void {
       if (config && config.logo !== next.logo) config = next;
       return;
     }
+    if (config && configKey({ ...next, scope: config.scope }) === key) {
+      // Only "Show" changed: the place stays, and the databases' lists are read again with it.
+      key = nextKey;
+      config = next;
+      remembered.forEach((level, k) => {
+        if (level.database) remembered.delete(k);
+      });
+      enter(current());
+      redraw();
+      return;
+    }
     const firstRead = config === null;
     // Ticks made under the old settings go out with the old token.
     flushPending();
@@ -588,6 +602,8 @@ function main(): void {
     roots = next.token && !home ? new Roots(owner) : null;
     rootReads = 0;
     sweepAfter = 0;
+    sweepFailures = 0;
+    sweepProblem = false;
     const saved = firstRead ? load(owner, home) : null;
     if (saved) {
       stack = saved.stack;
@@ -621,13 +637,16 @@ function main(): void {
         redraw();
       };
       const kept = view.kind === "root" && roots !== null && (await roots.whoami(token, still)) === false ? roots : null;
+      // A read of the kept top level that asks Notion nothing: it confirms nothing either.
+      let silent = false;
       if (kept) {
         // The top level as kept: the last edited every read, the trash and one kept root every few.
         // While a sweep pass runs, which finds new ones itself, only the last edited, every few reads:
         // the wire is the sweep's (measured 22.11: the checks every 5 s stretched a 929-page pass to two minutes).
         rootReads += 1;
         const deep = rootReads % ROOT_DEEP_EVERY === 0;
-        if (!kept.sweeping || deep) await kept.recent(token, still);
+        silent = kept.sweeping && !deep;
+        if (!silent) await kept.recent(token, still);
         if (deep && !kept.sweeping) {
           await kept.trash(token, still);
           await kept.check(token, still);
@@ -657,17 +676,28 @@ function main(): void {
         return;
       }
       const keepId = shown()[selected]?.id;
+      const wasAt = selected;
       stack[stack.length - 1] = result.view;
       if (result.view.kind === "page" || result.view.kind === "database") kinds.set(result.view.id, result.view.kind);
       entries = fresh;
       database = result.database;
       selectById(keepId);
+      // A row ticked off goes below the open ones in the app's own order: the focus stays where it was,
+      // on the next task, instead of following the row to the end.
+      const landed = shown()[selected];
+      if (result.database && !result.database.sorts && selected > wasAt && landed && landed.id === keepId && landed.done) {
+        selected = settle(shown(), wasAt);
+      }
       if ((pointing || picking) && focused() !== (pointing ?? picking)?.id) dropPointing();
-      loaded = true;
-      partial = false;
-      confirmed();
-      problem = null;
-      failures = 0;
+      if (!silent || !sweepProblem) {
+        loaded = true;
+        partial = false;
+      }
+      if (!silent) {
+        confirmed();
+        problem = null;
+        failures = 0;
+      }
       // A view that takes long to read is read again less often, so reading does not take the bar over.
       // The kept top level is checked as often as any view; for it a slow read is the checks' own pace, not a reason to wait longer.
       nextReadAt = kept ? now + REFRESH_MS : now + Math.max(view.kind === "root" ? ROOT_CHECK_MS : REFRESH_MS, (now - startedAt) * SLOW_READ_FACTOR);
@@ -679,7 +709,11 @@ function main(): void {
       const { problem: p, retryMs, drop } = explain(err, failures);
       failures += 1;
       nextReadAt = Date.now() + retryMs;
-      if (drop) loaded = false;
+      if (drop) {
+        loaded = false;
+        // No list is left to call old: the note's timer goes, the screen says why.
+        confirmed();
+      }
       // Without a list the screen says why at once. With one, the list stays, and if reads go on failing
       // for STALE_NOTE_MS a note says so once, in the words of the latest failure.
       if (!loaded) {
@@ -744,6 +778,7 @@ function main(): void {
     void r.sweep(c.token, now)
       .then((changed) => {
         sweepAfter = 0;
+        sweepFailures = 0;
         // One line a pass, about a day apart: how long the workspace took, for comparing bars and workspaces.
         if (!r.sweeping && passStartedAt > 0) {
           console.error(`${APP}: sweep pass done in ${Math.round((Date.now() - passStartedAt) / 1000)} s, ${r.entries().length} top-level`);
@@ -756,9 +791,25 @@ function main(): void {
         selectById(keepId);
         keep(current(), { entries, database: null, focus: focused() });
         redraw();
+        if (sweepProblem) {
+          sweepProblem = false;
+          problem = null;
+          loaded = true;
+          redraw();
+        }
       }, (err: unknown) => {
-        report("sweep", err);
-        sweepAfter = Date.now() + RETRY_MS;
+        if (sweepFailures === 0) report("sweep", err);
+        // Waited for as a read is: longer each time, Retry-After kept, a bad token not asked every 15 s.
+        const { problem: p, retryMs } = explain(err, sweepFailures);
+        sweepFailures += 1;
+        sweepAfter = Date.now() + retryMs;
+        // With nothing found yet the screen would spin for good: it says why instead.
+        if (sweepKey === key && roots === r && r.searching && current().kind === "root") {
+          sweepProblem = true;
+          problem = p;
+          loaded = false;
+          redraw();
+        }
       })
       .then(() => {
         sweeping = false;
@@ -796,7 +847,15 @@ function main(): void {
 
   function attempt(id: string, t: Tick): void {
     t.timer = undefined;
-    setDone(t.token, t.task, t.database, t.done, t.option)
+    // The entry as last read: a re-read may have moved a to-do among its page's to-dos.
+    let task = t.task;
+    for (let i = 0; i < entries.length; i += 1) {
+      if (entries[i].id === id && entries[i].kind === task.kind) {
+        task = entries[i];
+        break;
+      }
+    }
+    setDone(t.token, task, t.database, t.done, t.option)
       .then(() => {
         if (ticks.get(id) !== t) return;
         t.stage = "settled";
@@ -830,6 +889,11 @@ function main(): void {
         ticks.delete(id);
         // The page changed under the tick: read it now, so the next try finds the task.
         if (err instanceof MovedError) nextReadAt = 0;
+        // Notion refused the value: an option renamed or removed. The schema is looked up again.
+        if (err instanceof NotionError && err.status === 400) {
+          databases.clear();
+          nextReadAt = 0;
+        }
         if (!stopped) showBanner("Not saved", explain(err, 0).problem[0], NOTE_MS);
       })
       .then(() => redraw());

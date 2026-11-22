@@ -50,6 +50,11 @@ interface Saved {
    * its top level is read the old way (`source.ts`).
    */
   internal: boolean | null;
+  /**
+   * The newest edit time the recent check has seen: the next check reads on
+   * until it is past it (a minute short of it, Notion's times being to the minute).
+   */
+  seen?: string;
 }
 
 const KEY = "roots1";
@@ -59,6 +64,8 @@ const PASS_EVERY_MS = 24 * 60 * 60 * 1000;
 const SWEEP_SIZE = 100;
 /** The recent and trash checks: one small answer each. */
 const CHECK_SIZE = 10;
+/** Answers a recent check reads at most: 50 results. */
+const RECENT_ANSWERS = 5;
 const SEARCH = "search?filter_properties=title";
 
 const NEWEST = { timestamp: "last_edited_time", direction: "descending" };
@@ -241,10 +248,32 @@ export class Roots {
     return any;
   }
 
-  /** The last edited pages and databases: new top-level ones, renamed and restored ones. */
+  /**
+   * The last edited pages and databases: new top-level ones, renamed and
+   * restored ones. Read on, up to RECENT_ANSWERS, until the edits are older
+   * than the newest seen last time: a top-level page made while the user was
+   * elsewhere is found though many edits came after it.
+   */
   async recent(token: string, alive: () => boolean): Promise<boolean> {
-    const scan = await this.scan(token, { sort: NEWEST, page_size: CHECK_SIZE }, { priority: UPKEEP, alive });
-    return this.take(token, scan.found, { priority: UPKEEP, alive });
+    const seen = this.saved.seen ?? "";
+    const until = seen ? new Date(Date.parse(seen) - 60000).toISOString() : "";
+    let any = false;
+    let newest = "";
+    let cursor: string | null = null;
+    for (let i = 0; i < RECENT_ANSWERS; i += 1) {
+      const body: Json = { sort: NEWEST, page_size: CHECK_SIZE };
+      if (cursor) body.start_cursor = cursor;
+      const scan = await this.scan(token, body, { priority: UPKEEP, alive });
+      if (i === 0) newest = scan.firstEdited;
+      if (await this.take(token, scan.found, { priority: UPKEEP, alive })) any = true;
+      if (!until || !scan.hasMore || !scan.cursor || !scan.lastEdited || scan.lastEdited < until) break;
+      cursor = scan.cursor;
+    }
+    if (newest && newest > seen) {
+      this.saved.seen = newest;
+      this.dirty = true;
+    }
+    return any;
   }
 
   /** The last trashed pages: any kept one goes. */
@@ -257,6 +286,8 @@ export class Roots {
     let any = false;
     for (const item of Array.isArray(answer.results) ? answer.results : []) {
       const id = (item as Json).id;
+      // The index lags: a page restored since may still be listed, with its own flag already false.
+      if ((item as Json).in_trash !== true) continue;
       if (typeof id === "string" && this.drop(id)) any = true;
     }
     return any;

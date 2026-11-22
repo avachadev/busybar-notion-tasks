@@ -87,8 +87,23 @@ interface Job {
 const waiting: Job[] = [];
 let busy = false;
 let seq = 0;
+/** Notion asked to wait (429, 529): nothing starts before this, whoever asks. */
+let heldUntil = 0;
+let holdTimer: ReturnType<typeof setTimeout> | undefined;
+/** A wait asked without saying how long. */
+const DEFAULT_HOLD_MS = 2000;
 
 function pump(): void {
+  const wait = heldUntil - Date.now();
+  if (wait > 0) {
+    if (holdTimer === undefined) {
+      holdTimer = setTimeout(() => {
+        holdTimer = undefined;
+        pump();
+      }, wait);
+    }
+    return;
+  }
   while (!busy && waiting.length > 0) {
     const job = waiting.shift() as Job;
     if (job.gone) continue;
@@ -188,8 +203,12 @@ function failure(answer: Answer): NotionError {
   const code = typeof json.code === "string" ? json.code : "";
   const message = typeof json.message === "string" ? json.message : `HTTP ${answer.status}`;
   const extra = json.additional_data as { retry_after?: unknown } | undefined;
-  const seconds = typeof extra?.retry_after === "number" ? extra.retry_after : answer.retryAfter;
-  return new NotionError(answer.status, code, message, seconds > 0 ? seconds * 1000 : 0);
+  // The body's `retry_after` is a string of whole seconds; the header the same, where the bar shows it.
+  const fromBody = Number(extra?.retry_after);
+  const seconds = fromBody > 0 ? fromBody : answer.retryAfter;
+  const waitMs = seconds > 0 ? seconds * 1000 : 0;
+  if (answer.status === 429 || answer.status === 529) heldUntil = Math.max(heldUntil, Date.now() + (waitMs || DEFAULT_HOLD_MS));
+  return new NotionError(answer.status, code, message, waitMs);
 }
 
 interface Reader {

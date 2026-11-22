@@ -9,7 +9,8 @@ holds, its subpages, the databases inside it, its toggles, headings and to-dos, 
 order. To-dos nested under other to-dos and inside toggles are indented; what is in columns, callouts,
 quotes, synced blocks and lists shows in place. Turn the wheel to move, press **OK** to open a page,
 to open or close a toggle, or to tick a task off. A ticked task stays where it is, as in Notion, with a burst
-of confetti. Press **OK** again to untick it.
+of confetti. Press **OK** again to untick it. In a database shown in the app's own order, open rows
+first, a ticked row moves down after a few seconds, and the cursor stays on the next task.
 
 The bar talks to the Notion API itself, over its own Wi-Fi. No computer, server or proxy is involved:
 your token and your tasks go only between the bar and `api.notion.com`.
@@ -119,8 +120,8 @@ for come soonest first, open rows before done ones. The app finds the properties
 
 - **Status**: the property the first view groups by or shows as a checkbox; else a checkbox named like
   *Done*, *Complete* or *Finished* (or its Russian equivalent); else a status property, where any option
-  in its third group (*Complete*) means done; else a select with an option named like *Done*; else any
-  checkbox. A database with several data sources uses the view's own, else the first that has one of
+  in its third group (*Complete*) means done; else a select with an option named like *Done* (emoji and
+  punctuation aside: *✅ Done* counts); else the database's only checkbox. A database with several data sources uses the view's own, else the first that has one of
   these. A database with none of them shows its rows as pages.
 - **Due date**: a date property named like *Due* or *Date*; else the first date property. A database
   without one shows all open rows.
@@ -138,7 +139,7 @@ so "ticked off today" means a done row edited since midnight by the bar's clock.
 | **Show** | For databases with a date: *Due today, overdue or undated* (the default) or *All open tasks*. Pages always show every to-do. |
 | **Notion logo** | Off by default. On: the Notion logo at the left of the screen, for photos and videos. |
 
-Changes apply within a few seconds, without restarting the app.
+Changes apply within a few seconds, without restarting the app. A new **Show** keeps your place.
 
 ## What the bar may say
 

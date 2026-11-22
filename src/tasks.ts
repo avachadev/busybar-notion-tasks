@@ -118,6 +118,20 @@ export const MAX_TITLE = 80;
 const DONE_NAMES = ["done", "complete", "completed", "finished", "\u0433\u043e\u0442\u043e\u0432\u043e", "\u0441\u0434\u0435\u043b\u0430\u043d\u043e", "\u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e"];
 
 /**
+ * A name meaning "done": its letters only, lower case, so "✅ Done" and
+ * "Done!" count; emoji, digits, spaces and punctuation are dropped.
+ */
+export function doneLike(name: string): boolean {
+  const l = lower(name);
+  let letters = "";
+  for (let i = 0; i < l.length; i += 1) {
+    const c = l.charCodeAt(i);
+    if ((c >= 0x61 && c <= 0x7a) || (c >= 0x430 && c <= 0x44f) || c === 0x451) letters += l.charAt(i);
+  }
+  return DONE_NAMES.indexOf(letters) >= 0;
+}
+
+/**
  * Lower case, Russian included. The bar's JavaScript lowers ASCII only:
  * measured 22.11.2026 on 1.4.1, "\u0413\u043e\u0442\u043e\u0432\u043e".toLowerCase() comes back unchanged.
  */
@@ -206,7 +220,7 @@ function statusField(id: string, config: Json, asCheckbox: boolean): DoneField |
 /** A select with an option named like "Done": that one is done, the first other one to do, the rest in progress. */
 function selectField(id: string, config: Json): DoneField | null {
   const raw = list(config.options).map(record);
-  const doneName = raw.map((o) => str(o.name)).find((n) => DONE_NAMES.indexOf(lower(n)) >= 0);
+  const doneName = raw.map((o) => str(o.name)).find(doneLike);
   if (!doneName) return null;
   const openTo = raw.map((o) => str(o.name)).find((n) => n !== doneName) ?? null;
   const options: Option[] = raw.map((o) => {
@@ -228,6 +242,7 @@ export function readSchema(dataSource: Json, view: ViewInfo | null = null): Sche
   let titleId = "";
   let namedCheckbox = "";
   let anyCheckbox = "";
+  let checkboxes = 0;
   let status: DoneField | null = null;
   let select: DoneField | null = null;
   let preferred: DoneField | null = null;
@@ -242,8 +257,9 @@ export function readSchema(dataSource: Json, view: ViewInfo | null = null): Sche
     const chosen = view !== null && (view.groupBy === id || view.checkboxIds.indexOf(id) >= 0);
     if (type === "title") titleId = id;
     if (type === "checkbox") {
+      checkboxes += 1;
       if (!anyCheckbox) anyCheckbox = id;
-      if (!namedCheckbox && DONE_NAMES.indexOf(name) >= 0) namedCheckbox = id;
+      if (!namedCheckbox && doneLike(name)) namedCheckbox = id;
       if (chosen && !preferred) preferred = { kind: "checkbox", id };
     }
     if (type === "date") {
@@ -265,7 +281,8 @@ export function readSchema(dataSource: Json, view: ViewInfo | null = null): Sche
   if (!titleId) return null;
   const done: DoneField | null = preferred ?? (namedCheckbox
     ? { kind: "checkbox", id: namedCheckbox }
-    : status ?? select ?? (anyCheckbox ? { kind: "checkbox", id: anyCheckbox } : null));
+    // An unnamed checkbox only when it is the only one: of several, one may mean "featured" or "paid".
+    : status ?? select ?? (checkboxes === 1 ? { kind: "checkbox", id: anyCheckbox } : null));
   return { titleId, done, dateId: dueDateId ?? dateId };
 }
 

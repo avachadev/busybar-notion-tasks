@@ -73,3 +73,19 @@ test("a caller that gives up while waiting takes its request out of the queue", 
   assert.deepEqual(f.started, ["slow"]);
   assert.equal(wireIdle(), true);
 });
+
+test("after a 429 nothing starts before its retry_after has passed, a string of seconds as Notion sends it", async () => {
+  const starts: number[] = [];
+  let first = true;
+  globalThis.fetch = (async () => {
+    starts.push(Date.now());
+    if (first) {
+      first = false;
+      return new Response(JSON.stringify({ object: "error", status: 429, code: "rate_limited", message: "slow down", additional_data: { retry_after: "0.2" } }), { status: 429 });
+    }
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  }) as typeof fetch;
+  await assert.rejects(call("t", "GET", "a"), (err: { retryAfterMs: number }) => err.retryAfterMs === 200);
+  await call("t", "GET", "b", undefined, { priority: WRITE });
+  assert.ok(starts[1] - starts[0] >= 190, `waited ${starts[1] - starts[0]} ms`);
+});
