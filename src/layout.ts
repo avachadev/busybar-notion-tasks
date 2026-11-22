@@ -159,15 +159,26 @@ export function dim(color: string): string {
 }
 
 /**
- * While a view is read for the first time: its title on the top line, the
- * firmware's own spinner (8x8, `stock_path`) at its right, 1 px in from the
- * edge, and under them the skeleton of a line with its shimmer, an animation
- * the bar plays by itself (`tools/skeleton.py`).
+ * The top of a view being opened, after the mockup approved on the bar
+ * (22.11): the title on the top line, its letters on rows 1..5
+ * (anchored at -1), from the list's text x; at its left, where the mark goes,
+ * the firmware's own spinner while the view is read (8x8, from `stock_path`,
+ * at y 1), or the view's mark once it is known (y 0, centred on the letters
+ * as in the list). While reading, the title is drawn white under `load_dim`,
+ * which greys it and lets a shimmer through, and `load_bars` stands in for the
+ * lines to come (`tools/skeleton.py`); both play by themselves. Once read, the
+ * line under the title says what the view holds.
  */
+export const TOP_TITLE_Y = -1;
+export const TOP_MARK_Y = 0;
 export const SPINNER = "animations/spinner_front_8x8.anim";
-export const SPINNER_X = SCREEN_W - 9;
-export const SKELETON = "animations/skeleton.anim";
-export const SKELETON_Y = 9;
+export const SPINNER_Y = 1;
+export const LOAD_DIM = "animations/load_dim.anim";
+export const LOAD_DIM_Y = 0;
+export const LOAD_BARS = "animations/load_bars.anim";
+export const LOAD_BARS_Y = 8;
+/** The line under the title on the preview: its letters on rows 8..12, where the first bar was. */
+export const TOP_DETAIL_Y = 6;
 
 /** The dot that marks a list Notion could not confirm on the last read. */
 export const STALE_COLOR = "#FF8A3DFF";

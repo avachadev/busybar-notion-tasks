@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { printable, textWidth } from "../src/layout.ts";
-import { fit, listFrame, loadingFrame, messageFrame, placeLines, scrollbar } from "../src/screen.ts";
+import { fit, listFrame, loadingFrame, messageFrame, placeLines, previewFrame, scrollbar } from "../src/screen.ts";
 import type { Entry } from "../src/tasks.ts";
 
 const todo = (id: string, title: string): Entry => ({ kind: "todo", id, title });
@@ -236,21 +236,32 @@ test("the scrollbar is the firmware's: 1 px on the right, the thumb moving from 
   assert.ok(frame.scrollthumb);
 });
 
-test("a view read for the first time shows its title on top, the firmware's spinner at its right and a shimmering skeleton under them", () => {
-  const els = byId(loadingFrame("Projects", "database"));
-  assert.equal(els.loadmark.x, 1);
-  assert.equal(els.loadtitle.x, 10);
-  assert.equal(els.loadtitle.y, 0);
+test("a view read for the first time: the firmware's spinner where the mark goes, the title greyed with a shimmer, two bars under it", () => {
+  const els = byId(loadingFrame("Projects"));
   assert.equal(els.loadspin.type, "animation");
   assert.equal(els.loadspin.stock_path, "animations/spinner_front_8x8.anim");
-  assert.equal(els.loadspin.x, 63);
-  assert.equal(els.loadspin.loop, true);
-  assert.equal(els.loadskel.path, "animations/skeleton.anim");
-  assert.equal(els.loadskel.y, 9);
-  // The top level has no mark; with the logo everything starts right of it.
-  const top = byId(loadingFrame("Notion", null, true));
-  assert.equal(top.loadmark, undefined);
-  assert.equal(top.loadtitle.x, 11);
-  assert.equal(top.loadskel.x, 10);
-  assert.ok(top.icon);
+  assert.deepEqual([els.loadspin.x, els.loadspin.y], [1, 1]);
+  assert.deepEqual([els.toptitle.x, els.toptitle.y, els.toptitle.color], [10, -1, "#FFFFFFFF"]);
+  assert.equal(els.loaddim.path, "animations/load_dim.anim");
+  assert.deepEqual([els.loaddim.x, els.loaddim.y], [10, 0]);
+  // The dimmer lies over the title, the spinner over both.
+  assert.ok((els.loaddim.z_index as number) > (els.toptitle.z_index as number));
+  assert.ok((els.loadspin.z_index as number) > (els.loaddim.z_index as number));
+  assert.equal(els.loadbars.path, "animations/load_bars.anim");
+  assert.deepEqual([els.loadbars.x, els.loadbars.y], [10, 8]);
+  assert.equal(els.loadmark, undefined);
+  const logo = byId(loadingFrame("Notion", true));
+  assert.ok(logo.icon);
+  assert.equal(logo.loadspin.x, 11);
+  assert.equal(logo.toptitle.x, 20);
+});
+
+test("a view read before: its mark where the spinner was, its title, and what it holds under it in grey", () => {
+  const els = byId(previewFrame("Projects", "3 pages, 2 tasks", "database"));
+  assert.equal(els.topmark.type, "xpmbitmap");
+  assert.deepEqual([els.topmark.x, els.topmark.y], [1, 0]);
+  assert.deepEqual([els.toptitle.x, els.toptitle.y], [10, -1]);
+  assert.deepEqual([els.topdetail.x, els.topdetail.y, els.topdetail.text, els.topdetail.color], [10, 6, "3 pages, 2 tasks", "#FFFFFF66"]);
+  assert.equal(els.loadspin, undefined);
+  assert.equal(els.loadbars, undefined);
 });

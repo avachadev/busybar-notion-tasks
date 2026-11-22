@@ -36,6 +36,10 @@ off. What it does, its settings and its files: [README.md](README.md).
   - the firmware's shared animations and images are open to apps by `stock_path: "<folder>/<file>"`
     (only the file name counts, looked up in `/ext/apps_assets/shared/animations` or `images`); the
     loading screen uses `animations/spinner_front_8x8.anim`, the firmware's own spinner;
+  - the firmware blends an animation's half-transparent pixels over what is under it: the loading
+    screen greys the title with a 60% black layer (`load_dim`) whose clear band is the shimmer;
+  - an app's animation file being played cannot be overwritten (`storage/write` fails): clear the
+    elements first;
   - a looping animation moved off screen is also set `loop: false`, so it stops costing frames;
   - an element id keeps its type: the checkbox and every mark are XPM under one id per slot;
     a plate, chevron or count a slot no longer has is moved off screen, in the same request;

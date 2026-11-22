@@ -41,10 +41,15 @@ import {
   SCROLL_THUMB,
   SCROLL_TRACK,
   SCROLL_X,
-  SKELETON,
-  SKELETON_Y,
+  LOAD_BARS,
+  LOAD_BARS_Y,
+  LOAD_DIM,
+  LOAD_DIM_Y,
   SPINNER,
-  SPINNER_X,
+  SPINNER_Y,
+  TOP_DETAIL_Y,
+  TOP_MARK_Y,
+  TOP_TITLE_Y,
   SCREEN_H,
   SCREEN_W,
   STALE_COLOR,
@@ -453,25 +458,49 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
   return out;
 }
 
+/** An animation the bar plays by itself, looping, from the app's files or, `stock`, the firmware's. */
+function animation(id: string, x: number, y: number, file: string, stock: boolean, z: number): Element {
+  return remember(`a|${id}|${x}|${y}|${file}`, () => ({
+    id, type: "animation", display: "front", align: "top_left", x, y, [stock ? "stock_path" : "path"]: file, loop: true, z_index: z,
+  }) as unknown as Element);
+}
+
+/** The title on the top line, from the list's text x; it scrolls in the room left to it. */
+function topTitle(title: string, logo: boolean): Element {
+  const x = listX(logo) + TEXT_INSET_X;
+  return text("toptitle", x, TOP_TITLE_Y, printable(title) || "Untitled", TEXT_IDLE, SCREEN_W - 1 - x);
+}
+
 /**
- * Shown while a view is read for the first time, so it is plain the bar has not
- * hung: the title moved to the top line, with its mark, the firmware's spinner
- * at the right, and a skeleton of a line under them with a shimmer. Both are
- * animations the bar plays itself: no request per frame.
+ * Shown while a view is read for the first time, so it is plain the bar has
+ * not hung: the firmware's spinner where the mark goes, the title in grey with
+ * a shimmer, and two bars for the lines to come, shimmering with it. The
+ * spinner and the shimmer are animations the bar plays itself: no request per
+ * frame.
  */
-export function loadingFrame(title: string, kind: "page" | "database" | null, logo = false): Element[] {
+export function loadingFrame(title: string, logo = false): Element[] {
   const x0 = listX(logo);
-  const textX = kind ? x0 + TEXT_INSET_X : x0 + 1;
-  const value = printable(title) || "Untitled";
+  const textX = x0 + TEXT_INSET_X;
   const out: Element[] = logo ? [icon()] : [];
-  if (kind) out.push(mark("loadmark", kind, x0 + CHECKBOX_INSET_X, CHECKBOX_INSET_Y));
-  out.push(text("loadtitle", textX, 0, value, TEXT_IDLE, SPINNER_X - 2 - textX));
-  out.push(remember("loadspin", () => ({
-    id: "loadspin", type: "animation", display: "front", align: "top_left", x: SPINNER_X, y: 0, stock_path: SPINNER, loop: true, z_index: 2,
-  }) as unknown as Element));
-  out.push(remember(`loadskel|${x0}`, () => ({
-    id: "loadskel", type: "animation", display: "front", align: "top_left", x: x0, y: SKELETON_Y, path: SKELETON, loop: true, z_index: 1,
-  }) as unknown as Element));
+  out.push(animation("loadspin", x0 + CHECKBOX_INSET_X, SPINNER_Y, SPINNER, true, 4));
+  out.push(topTitle(title, logo));
+  out.push(animation("loaddim", textX, LOAD_DIM_Y, LOAD_DIM, false, 3));
+  out.push(animation("loadbars", textX, LOAD_BARS_Y, LOAD_BARS, false, 1));
+  return out;
+}
+
+/**
+ * A view just opened that was read before: for a moment, its title as on the
+ * loading screen, its mark where the spinner was, and under it, in grey, what
+ * it holds. Then the list.
+ */
+export function previewFrame(title: string, detail: string, kind: "page" | "database", logo = false): Element[] {
+  const x0 = listX(logo);
+  const textX = x0 + TEXT_INSET_X;
+  const out: Element[] = logo ? [icon()] : [];
+  out.push(mark("topmark", kind, x0 + CHECKBOX_INSET_X, TOP_MARK_Y));
+  out.push(topTitle(title, logo));
+  out.push(text("topdetail", textX, TOP_DETAIL_Y, printable(detail), TEXT_EDGE, SCREEN_W - 1 - textX));
   return out;
 }
 

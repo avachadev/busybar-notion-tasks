@@ -70,9 +70,11 @@ A status the database's view shows as a checkbox stays a checkbox.
 | Toggle | No plate; ▸ closed, ▾ open, the number of open tasks inside on the right. Toggles start closed. |
 | Heading | Grey text, no mark; the focus passes over it |
 
-While a page or a database is read for the first time, its title moves to the top line with the bar's
-own spinner at its right, and a grey skeleton of a line shimmers under them: the bar has not hung, Notion
-is answering. A page read before shows at once, from memory, and is read again behind it.
+While a page or a database is read for the first time, its title moves to the top line in grey with the
+bar's own spinner where its mark goes, and two grey bars stand in for its lines; a light band sweeps
+across the title and the bars: the bar has not hung, Notion is answering. A page read before opens at
+once, from memory: for a moment its mark, its title and, under it in grey, what it holds, then the list,
+read again behind it.
 
 A scrollbar in the rightmost column shows where the focus is in the list, as in the bar's own menus:
 a dim track and a white thumb, 1 px wide. The list stops 1 px short of it.

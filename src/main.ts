@@ -27,7 +27,7 @@ import { focusable, settle, step } from "./focus.ts";
 import { shownEntries } from "./markdown.ts";
 import { NotionError, wireIdle } from "./notion.ts";
 import { Roots } from "./roots.ts";
-import { type Element, type Focus, isTagRow, listFrame, loadingFrame, messageFrame as message, opens, staleMark } from "./screen.ts";
+import { type Element, type Focus, isTagRow, listFrame, loadingFrame, messageFrame as message, opens, previewFrame, staleMark } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
 import { type Database, type Entry, type Option, isTask, mergeRoots, optionOf } from "./tasks.ts";
 
@@ -191,8 +191,11 @@ function main(): void {
   let sweepAfter = 0;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  /** A title shown on opening a page, or a note: over the list, for a moment. */
-  let banner: { title: string; detail: string | null } | null = null;
+  /**
+   * A title shown on opening a page read before, with its mark, or a note:
+   * over the list, for a moment. `detail` null: what the list holds.
+   */
+  let banner: { title: string; detail: string | null; mark: "page" | "database" | null } | null = null;
   let bannerTimer: ReturnType<typeof setTimeout> | undefined;
 
   const remembered = new Map<string, Level>();
@@ -341,14 +344,17 @@ function main(): void {
 
     const view = current();
     const title = viewTitle(view) || "Notion";
-    if (banner) return messageFrame(banner.title, banner.detail ?? (loaded ? count(entries) : "loading"));
-    if (!loaded) return problem ? messageFrame(problem[0], problem[1]) : loadingFrame(title, viewMark(view), logo);
+    if (banner) {
+      const detail = banner.detail ?? (loaded ? count(entries) : "loading");
+      return banner.mark ? previewFrame(banner.title, detail, banner.mark, logo) : messageFrame(banner.title, detail);
+    }
+    if (!loaded) return problem ? messageFrame(problem[0], problem[1]) : loadingFrame(title, logo);
     if (entries.length === 0) {
       if (view.kind === "database") {
         return config.scope === "today" ? messageFrame("All done", "for today") : messageFrame("All done", "no open tasks");
       }
       // The first sweep is still under way: the top level fills in as it goes.
-      if (view.kind === "root" && roots && roots.searching) return loadingFrame("Notion", null, logo);
+      if (view.kind === "root" && roots && roots.searching) return loadingFrame("Notion", logo);
       // An internal connection sees only pages shared with it: ••• > Connections in Notion.
       if (view.kind === "root") return messageFrame("No pages", "share pages with the connection");
       return messageFrame(title, "no tasks or pages");
@@ -416,9 +422,9 @@ function main(): void {
     }
   }
 
-  function showBanner(title: string, detail: string | null, ms: number): void {
+  function showBanner(title: string, detail: string | null, ms: number, mark: "page" | "database" | null = null): void {
     if (bannerTimer !== undefined) clearTimeout(bannerTimer);
-    banner = { title, detail };
+    banner = { title, detail, mark };
     bannerTimer = setTimeout(() => {
       bannerTimer = undefined;
       banner = null;
@@ -810,7 +816,7 @@ function main(): void {
     stack.push(view);
     enter(current());
     // Remembered: its name for a moment, then the list. Not yet: the loading screen, which has its name.
-    if (loaded) showBanner(title, null, BANNER_MS);
+    if (loaded) showBanner(title, null, BANNER_MS, viewMark(view));
     else redraw();
   }
 
