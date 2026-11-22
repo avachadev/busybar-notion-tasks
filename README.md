@@ -85,9 +85,10 @@ a dim track and a white thumb, 1 px wide. The list stops 1 px short of it.
 
 A page or a database whose icon in Notion is an emoji shows it in its mark's place, 7x7 pixels, on the
 top level, in the rows of a database shown as pages and on the screen that opens it; dimmed when it is not
-focused. A task row keeps its checkbox or its status there. A
-subpage on a page keeps the sheet: its icon is not in the page's text, and asking for it would cost a
-request a subpage. An uploaded or linked picture cannot be drawn on the bar and keeps the mark too.
+focused. A task row keeps its checkbox or its status there. A subpage or a database on a page gets
+its emoji a moment after the page opens: the page's text has no icons, so each is asked for on its own,
+one at a time while the wheel is still, and kept for the next visit. An uploaded or linked picture
+cannot be drawn on the bar and keeps the mark.
 
 A page, a database or a toggle that is not focused is grey, marks included, as the neighbours in the
 bar's APPS menu are: it shows there is more without drawing the eye. Tasks keep their look.
@@ -244,6 +245,7 @@ Over Wi-Fi add `-- --addr <bar-ip>` (and `--password <password>` if the bar has 
 | `src/display.ts` | Draws through the bar's local HTTP API. |
 | `src/images`, `src/animations` | The logo; the confetti, the loading shimmer, and the emoji icons, `e_*.anim`. |
 | `src/emoji.ts` | Finds an emoji icon's pack and section. |
+| `src/icons.ts` | Asks for and keeps the icons of a page's subpages and databases. |
 | `src/scan.ts`, `src/roots.ts` | Find and keep the top level. |
 | `tools/confetti.py`, `tools/skeleton.py` | Render the confetti and the loading shimmer. |
 | `tools/emoji.py` | Makes the 64 emoji icon packs from Twemoji's 72x72 PNGs. |

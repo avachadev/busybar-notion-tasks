@@ -26,11 +26,12 @@ import { clearAll, deleteElements, drawElements, prepare } from "./display.ts";
 import { type SetupReason, type WebAddress, setupElements, webAddresses } from "./setup.ts";
 import { focusable, settle, step } from "./focus.ts";
 import { shownEntries } from "./markdown.ts";
-import { NotionError, wireIdle } from "./notion.ts";
+import { Icons } from "./icons.ts";
+import { DroppedError, NotionError, UPKEEP, call, wireIdle } from "./notion.ts";
 import { forgetRoots, Roots } from "./roots.ts";
 import { type Element, type Focus, isTagRow, lineLeft, listFrame, loadingFrame, messageFrame as message, opens, previewFrame } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
-import { type Database, type Entry, type Option, isTask, mergeRoots, optionOf, reuseEntries } from "./tasks.ts";
+import { type Database, type Entry, type Option, emojiOf, isTask, mergeRoots, optionOf, reuseEntries } from "./tasks.ts";
 
 /** The name the app draws under; the device clears elements by this id. */
 const APP = manifest.id;
@@ -629,6 +630,8 @@ function main(): void {
     remembered.clear();
     openToggles.clear();
     databases.clear();
+    icons.clear();
+    iconsAfter = 0;
     dropBanner();
     home = next.link.kind === "id" ? next.link.id : "";
     loadingAt = null;
@@ -667,7 +670,7 @@ function main(): void {
       const first = (list: Entry[], resolved: View) => {
         if (!still() || loaded) return;
         stack[stack.length - 1] = resolved;
-        entries = list;
+        entries = resolved.kind === "page" ? icons.apply(list, entries) : list;
         loaded = true;
         partial = true;
         selected = settle(shown(), 0);
@@ -696,12 +699,14 @@ function main(): void {
           : await readView(token, view, scope, new Date(), databases, still, first);
       if (view.kind === "root" && !kept && !quick && readKey === key) rootReadAt = startedAt;
       const now = Date.now();
-      const fresh = result.entries.map((e) => {
+      const ticked = result.entries.map((e) => {
         const t = ticks.get(e.id);
         if (!t || t.stage !== "settled" || startedAt >= t.at + SETTLED_GRACE_MS) return e;
         if (t.option !== null && t.option !== e.tag) return withState(e, t);
         return t.done !== e.done ? { ...e, done: t.done } : e;
       });
+      // A page's markdown has no icons: the ones asked for its subpages, or those it showed before.
+      const fresh = result.view.kind === "page" ? icons.apply(ticked, base) : ticked;
       ticks.forEach((t, id) => {
         if (t.stage === "settled" && startedAt >= t.at + SETTLED_GRACE_MS) ticks.delete(id);
       });
@@ -798,6 +803,7 @@ function main(): void {
         redraw();
         maybeRead();
         maybeSweep();
+        maybeIcons();
       });
   }
 
@@ -856,6 +862,60 @@ function main(): void {
       .then(() => {
         sweeping = false;
         if (!stopped) setTimeout(guarded("sweep", maybeSweep), 0);
+      });
+  }
+
+  // ---- Icons of subpages ---------------------------------------------------
+
+  const icons = new Icons();
+  let iconing = false;
+  /** After a failure that is not the page's own (offline, 429), icons wait this long. */
+  let iconsAfter = 0;
+
+  /**
+   * One subpage's or database's icon, when nothing else wants the wire: as a
+   * sweep answer, an icon request cannot be stopped, so it never starts while
+   * the user is busy. Then the next one, the same way.
+   */
+  function maybeIcons(): void {
+    const c = config;
+    const now = Date.now();
+    if (stopped || iconing || !usable(c) || reading || sweeping || !loaded || partial || current().kind !== "page") return;
+    if (now < iconsAfter || now - lastInputAt < QUIET_MS || !wireIdle()) return;
+    const entry = icons.next(shown(), selected, now);
+    if (!entry) return;
+    iconing = true;
+    const iconKey = key;
+    const gen = viewGen;
+    const still = () => !stopped && iconKey === key && gen === viewGen;
+    const path = entry.kind === "database" ? `databases/${entry.id}` : `pages/${entry.id}`;
+    void call(c.token, "GET", path, undefined, { priority: UPKEEP, alive: still })
+      .then((answer) => {
+        if (iconKey !== key) return;
+        const icon = emojiOf(answer.icon);
+        icons.got(entry.id, icon, Date.now());
+        if (!still()) return;
+        let changed = false;
+        entries = entries.map((e) => {
+          if (e.id !== entry.id || (e.icon ?? "") === icon) return e;
+          changed = true;
+          if (icon) return { ...e, icon };
+          const { icon: _gone, ...rest } = e;
+          return rest;
+        });
+        if (!changed) return;
+        keepShown();
+        persist();
+        redraw();
+      }, (err: unknown) => {
+        if (iconKey !== key || err instanceof DroppedError) return;
+        // Not shared, gone or not a page after all: it has no icon to show. Anything else is tried later.
+        if (err instanceof NotionError && err.status >= 400 && err.status < 500 && err.status !== 429) icons.got(entry.id, "", Date.now());
+        else iconsAfter = Date.now() + RETRY_MS;
+      })
+      .then(() => {
+        iconing = false;
+        if (!stopped) setTimeout(guarded("icons", maybeIcons), 0);
       });
   }
 
@@ -1198,6 +1258,7 @@ function main(): void {
     if (idle) roots?.save();
     maybeRead();
     maybeSweep();
+    maybeIcons();
     redraw();
   }
 
