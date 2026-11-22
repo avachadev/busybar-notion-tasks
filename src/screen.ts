@@ -61,6 +61,8 @@ import {
   POINTER_X,
   TAG_H,
   TAG_TEXT_Y,
+  TAG_POINTED_X,
+  TAG_TITLE_POINTED_X,
   TAG_TITLE_X,
   TAG_TOP,
   TAG_X,
@@ -394,7 +396,7 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
     // Two lines on the whole screen: the title, which opens, and the status under it.
     const onTitle = mode === "title";
     const onTag = mode === "mark" || mode === "pick";
-    const titleX = x0 + TAG_TITLE_X;
+    const titleX = x0 + (onTitle ? TAG_TITLE_POINTED_X : TAG_TITLE_X);
     const ink = done ? TEXT_DONE : TEXT_IDLE;
     out.push(plate(`row${slot}`, x0, y, done, SCREEN_H, mode !== "list"));
     out.push(line(`text${slot}`, titleX, y, entry.title, onTag ? dim(ink) : ink, CHEVRON_X - 2 - titleX));
@@ -403,7 +405,7 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
     if (onTitle) out.push(mark(`go${slot}`, "go", x0 + POINTER_X, y + 3, TEXT_IDLE.substring(0, 7)));
     if (mode === "mark") out.push(mark(`go${slot}`, "go", x0 + POINTER_X, TAG_TOP + 2, TEXT_IDLE.substring(0, 7)));
     const shown = focus.tag ?? { name: entry.tag ?? "", color: entry.color ?? "default" };
-    const tagX = x0 + TAG_X;
+    const tagX = x0 + (onTag ? TAG_POINTED_X : TAG_X);
     for (const element of tag(slot, tagX, shown.name, shown.color, onTitle)) out.push(element);
     if (mode === "pick") {
       const width = textWidth(printable(shown.name) || "No status") + 4;

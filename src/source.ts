@@ -291,6 +291,7 @@ export async function readView(
     try {
       const opened = await openDatabase(token, view.id, alive);
       databases.set(view.id, opened.database);
+      openedAt.set(view.id, now.getTime());
       resolved = { kind: "database", id: view.id, title: opened.title, icon: view.icon };
     } catch (err) {
       if (!(err instanceof NotionError) || (err.status !== 400 && err.status !== 404)) throw err;

@@ -185,34 +185,37 @@ test("a row with a status fills the screen: title above, its status as a tag bel
   assert.deepEqual(placeLines(rows, 1), [{ offset: 0, y: 0 }]);
   const els = byId(listFrame(rows, 1, new Set()));
   assert.equal(els.row1.height, 16);
-  // The title and the tag's text on one vertical.
-  assert.equal(els.text1.x, 5);
-  assert.equal(els.tagtext1.x, 5);
+  // At rest the title and the tag's left edge on one vertical, 2 px in.
+  assert.equal(els.text1.x, 2);
+  assert.equal(els.tagtext1.x, 4);
   assert.equal(els.text1.text, "Call the bank");
   assert.equal(els.chevron1.type, "xpmbitmap");
   assert.equal(els.tagtext1.text, "Doing");
-  assert.equal(els.tag1.x, 3);
+  assert.equal(els.tag1.x, 2);
   assert.equal(els.tag1.y, 8);
   assert.equal(els.row0, undefined);
   assert.equal(els.row2, undefined);
 });
 
-test("pointing: the firmware's cursor at the plate's edge before the title or the status; choosing: its value arrows, the tag staying put", () => {
+test("pointing: the firmware's cursor at the plate's edge, what it points at moved right to 3 px after its tip; choosing: its value arrows", () => {
   const rows = [row("b", "Call", "Doing", "blue")];
   const list = byId(listFrame(rows, 0, new Set()));
   assert.equal(list.go1, undefined);
   const title = byId(listFrame(rows, 0, new Set(), false, new Set(), { mode: "title" }));
   assert.deepEqual([title.go1.x, title.go1.y], [0, 3]);
+  assert.equal(title.text1.x, 5);
+  assert.equal(title.tag1.x, list.tag1.x);
   assert.equal(title.text1.color, list.text1.color);
   assert.notEqual(title.tag1.fill_colors[0], list.tag1.fill_colors[0]);
   const mark = byId(listFrame(rows, 0, new Set(), false, new Set(), { mode: "mark" }));
   assert.deepEqual([mark.go1.x, mark.go1.y], [0, 10]);
   assert.match(String(mark.go1.data), /#  ?\n##\n# /);
+  assert.deepEqual([mark.tag1.x, mark.tagtext1.x, mark.text1.x], [3, 5, list.text1.x]);
   assert.equal(mark.text1.color, "#FFFFFF66");
   assert.equal(mark.tag1.fill_colors[0], list.tag1.fill_colors[0]);
   const pick = byId(listFrame(rows, 0, new Set(), false, new Set(), { mode: "pick", tag: { name: "Done", color: "green" } }));
   assert.equal(pick.tagtext1.text, "Done");
-  assert.equal(pick.tag1.x, list.tag1.x);
+  assert.equal(pick.tag1.x, mark.tag1.x);
   assert.deepEqual([pick.go1.x, pick.go1.y], [0, 10]);
   assert.match(String(pick.go1.data), / #\n# \n #/);
   assert.equal(pick.pick1.x, (pick.tag1.x as number) + (pick.tag1.width as number) + 1);

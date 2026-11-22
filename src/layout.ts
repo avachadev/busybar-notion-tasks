@@ -108,21 +108,25 @@ export const CHEVRON_X = LIST_RIGHT - 4;
 export const CHEVRON_INSET_Y = 2;
 
 /**
- * A row with a status takes the whole screen in two lines: the title at
- * TAG_TITLE_X on the top line, the status as a tag on the bottom one (as
- * drawn in Figma). The tag is a rectangle 7 px tall with the option's name 2 px in.
+ * A row with a status takes the whole screen in two lines: the title on the
+ * top line, the status as a tag on the bottom one. The tag is a rectangle 7 px
+ * tall with the option's name 2 px in. At rest the title and the tag's left
+ * edge stand on one vertical, 2 px in from the plate (22.11: further in, for
+ * a cursor that was not there, it looked random).
  */
-export const TAG_TITLE_X = 5;
-export const TAG_X = 3;
+export const TAG_TITLE_X = 2;
+export const TAG_X = 2;
 /**
  * Pointing at a row's title or its status, the firmware's cursor `▶` (2x3)
- * stands on the plate's left edge (22.11: 1 px further left than
- * inside it), its tip 3 px before the text: before
- * the title, and before the tag's text, the tag's own inset being those 2 px.
- * Choosing the status, the firmware's `‹` takes its place and `›` follows the
- * tag 1 px after it, as the value of a setting in SETTINGS.
+ * stands on the plate's left edge, its tip 3 px before the text, and what it
+ * points at moves right to make room: the title to TAG_TITLE_POINTED_X, the
+ * tag to TAG_POINTED_X, its text then 3 px after the tip as well. Choosing the
+ * status, the firmware's `‹` takes the cursor's place and `›` follows the tag
+ * 1 px after it, as the value of a setting in SETTINGS.
  */
 export const POINTER_X = 0;
+export const TAG_TITLE_POINTED_X = 5;
+export const TAG_POINTED_X = 3;
 export const TAG_TOP = 8;
 export const TAG_H = 7;
 export const TAG_TEXT_Y = 7;

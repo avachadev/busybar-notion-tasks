@@ -150,3 +150,23 @@ test("the walk to a to-do stops at it: what lies after is not read", async () =>
   await setDone("t", { kind: "todo", id: "pg2/0/First", title: "First", page: "pg2", index: 0 }, null, true);
   assert.deepEqual(calls, ["blocks/pg2/children", "blocks/a0"]);
 });
+
+test("a start page that is a database is opened once: five requests, its rows read", async () => {
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    const path = String(url).replace(/.*v1\//, "").replace(/\?.*/, "");
+    calls.push(path);
+    let body: unknown = {};
+    if (path === "databases/db") body = { object: "database", title: [{ plain_text: "Tasks" }], data_sources: [{ id: "ds" }] };
+    else if (path === "views") body = { results: [{ object: "view", id: "v" }] };
+    else if (path === "views/v") body = { object: "view", id: "v", type: "table", data_source_id: "ds", sorts: null };
+    else if (path === "data_sources/ds") {
+      body = { object: "data_source", id: "ds", properties: { Name: { id: "title", name: "Name", type: "title" }, Done: { id: "d", name: "Done", type: "checkbox" } } };
+    } else if (path === "data_sources/ds/query") body = { results: [{ object: "page", id: "r1", properties: { Name: { id: "title", title: [{ plain_text: "Row" }] }, Done: { id: "d", checkbox: false } } }], has_more: false };
+    return { ok: true, status: 200, json: async () => body } as unknown as Response;
+  }) as typeof fetch;
+  const loaded = await readView("t", { kind: "start", id: "db" }, "all", new Date(), new Map(), () => true);
+  assert.deepEqual(calls, ["databases/db", "views", "views/v", "data_sources/ds", "data_sources/ds/query"]);
+  assert.equal(loaded.view.kind, "database");
+  assert.deepEqual(loaded.entries.map((e) => e.title), ["Row"]);
+});
