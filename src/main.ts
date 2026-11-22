@@ -375,12 +375,13 @@ function main(): void {
       else changed.push({ ...gone, y: OFF_SCREEN_Y } as Element);
     }
     try {
-      if (changed.length > 0) await drawElements(APP, changed);
-      for (const element of changed) onScreen[element.id] = element;
+      // Deleted first: drawn first, the loading spinner stood over the list that replaced it until the delete came.
       if (deleted.length > 0) {
         for (const id of deleted) delete onScreen[id];
         await deleteElements(APP, deleted);
       }
+      if (changed.length > 0) await drawElements(APP, changed);
+      for (const element of changed) onScreen[element.id] = element;
       inView = elements.map((e) => e.id);
     } catch (err) {
       lost = true;
