@@ -103,6 +103,8 @@ export interface Entry {
   readonly color?: string;
   /** For a to-do: the page or database its text links, which OK can open. */
   readonly link?: string;
+  /** The page's or database's icon, when it is an emoji (drawn from `emoji.ts`'s packs). */
+  readonly icon?: string;
 }
 
 /** Which tasks a database list shows. */
@@ -140,6 +142,17 @@ function list(value: unknown): unknown[] {
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+/** An object's icon when it is an emoji (`{"type":"emoji","emoji":"..."}`), else "": an uploaded or linked picture cannot be drawn on the bar. */
+export function emojiOf(icon: unknown): string {
+  const o = record(icon);
+  return o.type === "emoji" ? str(o.emoji) : "";
+}
+
+/** The entry with its icon, when it has one: an absent field costs nothing in the saved place. */
+export function withIcon<T extends Entry>(entry: T, icon: string): T {
+  return icon ? { ...entry, icon } : entry;
 }
 
 /** Plain text of a rich text array, trimmed and capped. */
@@ -347,20 +360,22 @@ export function tasksFromQuery(response: Json, schema: Schema): Entry[] {
     if (page.object !== "page" || page.in_trash === true) continue;
     const title = plainText(propertyById(page, schema.titleId).title) || "Untitled";
     const id = str(page.id);
+    const icon = emojiOf(page.icon);
     if (!f) {
       // A row with nothing to tick is a page.
-      tasks.push({ kind: "page", id, title });
+      tasks.push(withIcon({ kind: "page", id, title }, icon));
       continue;
     }
     const field = propertyById(page, f.id);
     if (f.kind === "checkbox") {
-      tasks.push({ kind: "row", id, title, done: field.checkbox === true });
+      tasks.push(withIcon({ kind: "row", id, title, done: field.checkbox === true }, icon));
       continue;
     }
     const name = str(record(f.kind === "select" ? field.select : field.status).name);
     const option = optionOf(f, name);
     const done = option !== null && option.group === "done";
-    tasks.push(tagged ? { kind: "row", id, title, done, tag: name, color: option ? option.color : "default" } : { kind: "row", id, title, done });
+    const row: Entry = tagged ? { kind: "row", id, title, done, tag: name, color: option ? option.color : "default" } : { kind: "row", id, title, done };
+    tasks.push(withIcon(row, icon));
   }
   return tasks;
 }
@@ -418,7 +433,7 @@ export function foundInSearch(response: Json): Found[] {
     const parent = record(page.parent);
     const parentType = str(parent.type);
     found.push({
-      entry: { kind: "page", id: str(page.id), title: pageTitle(page) || "Untitled" },
+      entry: withIcon({ kind: "page", id: str(page.id), title: pageTitle(page) || "Untitled" }, emojiOf(page.icon)),
       parentType,
       parentId: str(parent[parentType]),
     });
@@ -452,10 +467,10 @@ export function rootsInSearch(response: Json): Entry[] {
     const o = record(item);
     if (o.in_trash === true) continue;
     if (o.object === "page" && record(o.parent).type === "workspace") {
-      out.push({ kind: "page", id: str(o.id), title: pageTitle(o) || "Untitled" });
+      out.push(withIcon({ kind: "page", id: str(o.id), title: pageTitle(o) || "Untitled" }, emojiOf(o.icon)));
     } else if (o.object === "data_source" && record(o.database_parent).type === "workspace") {
       const id = str(record(o.parent).database_id);
-      if (id) out.push({ kind: "database", id, title: plainText(o.title) || "Untitled" });
+      if (id) out.push(withIcon({ kind: "database", id, title: plainText(o.title) || "Untitled" }, emojiOf(o.icon)));
     }
   }
   return out;
@@ -470,7 +485,7 @@ export function byTitle(entries: Entry[]): Entry[] {
 export function mergeRoots(roots: readonly Entry[], found: readonly Entry[]): Entry[] {
   const out = roots.map((e) => {
     const f = found.find((x) => x.id === e.id);
-    return f && f.title !== e.title ? { ...e, title: f.title } : e;
+    return f && (f.title !== e.title || f.icon !== e.icon) ? { ...e, title: f.title, icon: f.icon } : e;
   });
   for (const f of found) if (!out.some((e) => e.id === f.id)) out.push(f);
   return byTitle(out);

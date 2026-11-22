@@ -82,6 +82,11 @@ read again behind it.
 A scrollbar in the rightmost column shows where the focus is in the list, as in the bar's own menus:
 a dim track and a white thumb, 1 px wide. The list stops 1 px short of it.
 
+A page or a database whose icon in Notion is an emoji shows it in its mark's place, 7x7 pixels, on the
+top level, in a database's rows and on the screen that opens it; dimmed when it is not focused. A
+subpage on a page keeps the sheet: its icon is not in the page's text, and asking for it would cost a
+request a subpage. An uploaded or linked picture cannot be drawn on the bar and keeps the mark too.
+
 A page, a database or a toggle that is not focused is grey, marks included, as the neighbours in the
 bar's APPS menu are: it shows there is more without drawing the eye. Tasks keep their look.
 
@@ -226,8 +231,11 @@ Over Wi-Fi add `-- --addr <bar-ip>` (and `--password <password>` if the bar has 
 | `src/cache.ts` | Keeps the path and what it showed in `localStorage`. |
 | `src/screen.ts`, `src/layout.ts` | Display elements and geometry. |
 | `src/display.ts` | Draws through the bar's local HTTP API. |
-| `src/images`, `src/animations` | The logo; the confetti. |
-| `tools/confetti.py` | Renders the confetti frames. |
+| `src/images`, `src/animations` | The logo; the confetti, the loading shimmer, and the emoji icons, `e_*.anim`. |
+| `src/emoji.ts` | Finds an emoji icon's pack and section. |
+| `src/scan.ts`, `src/roots.ts` | Find and keep the top level. |
+| `tools/confetti.py`, `tools/skeleton.py` | Render the confetti and the loading shimmer. |
+| `tools/emoji.py` | Makes the 64 emoji icon packs from Twemoji's 72x72 PNGs. |
 | `test/` | Unit tests, run with Node's built-in test runner. |
 
 Releases are built by GitHub Actions: push a tag equal to the version in `src/appmeta/manifest.json`
@@ -236,3 +244,7 @@ Releases are built by GitHub Actions: push a tag equal to the version in `src/ap
 ## License
 
 [MIT](LICENSE). Notion is a trademark of Notion Labs, Inc. This app is not affiliated with Notion.
+
+The emoji icons are made from [Twemoji](https://github.com/jdecked/twemoji) 17.0.3, Copyright 2019 Twitter,
+Inc and other contributors, licensed under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/);
+they are shrunk to 7x7 pixels.

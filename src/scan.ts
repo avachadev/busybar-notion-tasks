@@ -26,6 +26,8 @@ export interface TopLevel {
   readonly id: string;
   /** A page's title; null for a database, whose title is read on its own. */
   readonly title: string | null;
+  /** A page's icon when it is an emoji (`"icon":{"type":"emoji","emoji":"..."}`), else "". */
+  readonly icon: string;
 }
 
 const W = 0x77;
@@ -47,6 +49,7 @@ const PAGE_START = ascii('"object":"page","id":"');
 const DATABASE_ID = ascii('"database_id":"');
 const PLAIN_TEXT = ascii('"plain_text":"');
 const TITLE_KEY = ascii('"title":[');
+const EMOJI_KEY = ascii('"emoji":"');
 /** From the start of a data source's `"database_id":"` to the `w`: the key, the id, `"},`, the key, `{"type":"`. */
 const DATABASE_ID_BACK = DATABASE_ID.length + 36 + 3 + 27;
 /** How far back a page's start may be from its parent: a cover and an icon with long URLs fit. */
@@ -59,6 +62,7 @@ interface TitleJob {
   /** A database is found whole at its hit; it waits in line only to keep the answer's order. */
   readonly kind: "page" | "database";
   readonly id: string;
+  readonly icon: string;
   readonly hit: number;
   pos: number;
   /** Past the `"title":[` that opens the page's title: until then `pos` looks for it. */
@@ -178,7 +182,7 @@ export class SearchScan {
 
   /** The answer is over: a title still open is taken as read, and the cursor is read from the answer's tail. */
   end(): void {
-    for (const job of this.jobs) this.found.push({ kind: job.kind, id: job.id, title: job.title || null });
+    for (const job of this.jobs) this.found.push({ kind: job.kind, id: job.id, title: job.title || null, icon: job.icon });
     this.jobs = [];
     const tailFrom = Math.max(this.win.first, this.win.end - 400);
     const tail = String.fromCharCode.apply(null, this.win.slice(tailFrom, this.win.end) as unknown as number[]);
@@ -208,17 +212,34 @@ export class SearchScan {
     const limit = Math.max(this.win.first, hit - MAX_BACK);
     for (let j = this.win.lastIndexOf(J, hit, limit); j >= 0; j = this.win.lastIndexOf(J, j - 1, limit)) {
       if (this.win.matches(j - 3, PAGE_START) === true) {
-        this.jobs.push({ kind: "page", id: this.id(j - 3 + PAGE_START.length), hit, pos: hit, inside: false, title: "" });
+        const start = j - 3;
+        this.jobs.push({ kind: "page", id: this.id(start + PAGE_START.length), icon: this.icon(start, hit), hit, pos: hit, inside: false, title: "" });
         return;
       }
     }
     this.odd += 1;
   }
 
+  /**
+   * A page's emoji icon, between its start and its parent: `"emoji":"` is
+   * looked for by its `j`, and only the first one counts (a cover or an
+   * uploaded icon has none). "" when the icon is not an emoji.
+   */
+  private icon(start: number, hit: number): string {
+    for (let j = this.win.indexOf(J, start + PAGE_START.length); j >= 0 && j < hit; j = this.win.indexOf(J, j + 1)) {
+      if (this.win.matches(j - 4, EMOJI_KEY) !== true) continue;
+      const from = j - 4 + EMOJI_KEY.length;
+      const to = this.win.indexOf(QUOTE, from);
+      if (to < 0 || to > hit || to - from > 64) return "";
+      return decode(this.win.slice(from, to), 0, to - from);
+    }
+    return "";
+  }
+
   private database(hit: number): void {
     const at = hit - DATABASE_ID_BACK;
     if (this.win.matches(at, DATABASE_ID) === true) {
-      this.jobs.push({ kind: "database", id: this.id(at + DATABASE_ID.length), hit, pos: hit, inside: true, title: "" });
+      this.jobs.push({ kind: "database", id: this.id(at + DATABASE_ID.length), icon: "", hit, pos: hit, inside: true, title: "" });
     } else {
       this.odd += 1;
     }
@@ -231,7 +252,7 @@ export class SearchScan {
       const state = job.kind === "database" ? "done" : this.title(job);
       if (state === "wait") return;
       this.jobs.shift();
-      this.found.push({ kind: job.kind, id: job.id, title: job.kind === "page" && state === "done" && job.title ? job.title : null });
+      this.found.push({ kind: job.kind, id: job.id, title: job.kind === "page" && state === "done" && job.title ? job.title : null, icon: job.icon });
     }
   }
 

@@ -302,3 +302,15 @@ test("Russian is lowered without the runtime's help", () => {
   const db = { properties: { T: { id: "t", type: "title" }, S: { id: "s", type: "select", select: { options: [{ name: "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435" }, { name: "\u0413\u043e\u0442\u043e\u0432\u043e" }] } } } };
   assert.equal(readSchema(db)!.done!.kind, "select");
 });
+
+test("a row's emoji icon comes with it; a picture icon does not", () => {
+  const schema = readSchema(checkboxDb)!;
+  const rows = tasksFromQuery({
+    results: [
+      { object: "page", id: "a", icon: { type: "emoji", emoji: "\u{1f3af}" }, properties: { Name: { id: "title", title: rt("Aim") }, Done: { id: "a%3Ab", checkbox: false } } },
+      { object: "page", id: "b", icon: { type: "external", external: { url: "https://x/y.png" } }, properties: { Name: { id: "title", title: rt("Pic") }, Done: { id: "a%3Ab", checkbox: false } } },
+    ],
+  }, schema);
+  assert.equal(rows[0].icon, "\u{1f3af}");
+  assert.equal(rows[1].icon, undefined);
+});

@@ -21,12 +21,14 @@
 
 import { type Json, NotionError, SWEEP, type Turn, UPKEEP, call, stream } from "./notion.ts";
 import { SearchScan, type TopLevel } from "./scan.ts";
-import { type Entry, byTitle, pageTitle, plainText } from "./tasks.ts";
+import { type Entry, byTitle, emojiOf, pageTitle, plainText, withIcon } from "./tasks.ts";
 
 export interface Root {
   readonly kind: "page" | "database";
   readonly id: string;
   readonly title: string;
+  /** Its emoji icon, or absent. */
+  readonly icon?: string;
 }
 
 /** What is saved: the list, and where the sweep stands. */
@@ -92,7 +94,7 @@ export class Roots {
 
   /** The top level as the screen shows it, sorted by title: the sidebar's own order is not in the API. */
   entries(): Entry[] {
-    if (!this.shown) this.shown = byTitle(this.saved.roots.map((r) => ({ kind: r.kind, id: r.id, title: r.title })));
+    if (!this.shown) this.shown = byTitle(this.saved.roots.map((r) => withIcon({ kind: r.kind, id: r.id, title: r.title }, r.icon ?? "")));
     return this.shown;
   }
 
@@ -149,13 +151,17 @@ export class Roots {
     for (const f of found) {
       const known = this.saved.roots.find((r) => r.id === f.id);
       let title = f.title;
+      let icon = f.icon;
       if (title === null && f.kind === "database") {
         if (known) continue;
-        title = plainText((await call(token, "GET", `databases/${f.id}`, undefined, turn)).title);
+        const db = await call(token, "GET", `databases/${f.id}`, undefined, turn);
+        title = plainText(db.title);
+        icon = emojiOf(db.icon);
       }
       const name = title || "Untitled";
-      if (known && known.title === name) continue;
-      this.saved.roots = this.saved.roots.filter((r) => r.id !== f.id).concat([{ kind: f.kind, id: f.id, title: name }]);
+      if (known && known.title === name && (known.icon ?? "") === icon) continue;
+      const root: Root = icon ? { kind: f.kind, id: f.id, title: name, icon } : { kind: f.kind, id: f.id, title: name };
+      this.saved.roots = this.saved.roots.filter((r) => r.id !== f.id).concat([root]);
       any = true;
     }
     if (any) this.changed();
@@ -261,8 +267,9 @@ export class Roots {
     const parent = (answer.parent ?? {}) as Json;
     if (answer.in_trash === true || answer.archived === true || parent.type !== "workspace") return this.drop(root.id);
     const title = (root.kind === "database" ? plainText(answer.title) : pageTitle(answer)) || "Untitled";
-    if (title === root.title) return false;
-    s.roots = s.roots.map((r) => (r.id === root.id ? { ...r, title } : r));
+    const icon = emojiOf(answer.icon);
+    if (title === root.title && icon === (root.icon ?? "")) return false;
+    s.roots = s.roots.map((r) => (r.id === root.id ? (icon ? { ...r, title, icon } : { kind: r.kind, id: r.id, title }) : r));
     this.changed();
     return true;
   }

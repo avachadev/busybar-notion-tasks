@@ -87,10 +87,10 @@ function scan(bytes: Uint8Array, size: number): SearchScan {
 }
 
 const EXPECTED = [
-  { kind: "page", id: id(2), title: "Списки дел" },
-  { kind: "page", id: id(4), title: "Quotes \"here\" and \\ slash and a second part" },
-  { kind: "page", id: id(5), title: null },
-  { kind: "database", id: id(10), title: null },
+  { kind: "page", id: id(2), title: "Списки дел", icon: "" },
+  { kind: "page", id: id(4), title: "Quotes \"here\" and \\ slash and a second part", icon: "📄" },
+  { kind: "page", id: id(5), title: null, icon: "" },
+  { kind: "database", id: id(10), title: null, icon: "" },
 ];
 
 test("top-level pages and databases are found, with their ids and the pages' titles, whatever the chunks", () => {
@@ -105,7 +105,7 @@ test("top-level pages and databases are found, with their ids and the pages' tit
 
 test("the last page of results has no cursor", () => {
   const s = scan(new TextEncoder().encode(JSON.stringify({ object: "list", results: [page(1, WORKSPACE, ["Only"])], next_cursor: null, has_more: false })), 50);
-  assert.deepEqual(s.found, [{ kind: "page", id: id(1), title: "Only" }]);
+  assert.deepEqual(s.found, [{ kind: "page", id: id(1), title: "Only", icon: "" }]);
   assert.equal(s.cursor, null);
   assert.equal(s.hasMore, false);
 });

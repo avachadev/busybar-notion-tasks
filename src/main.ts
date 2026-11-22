@@ -126,6 +126,11 @@ function viewTitle(view: View): string {
   return view.kind === "page" || view.kind === "database" ? view.title : view.kind === "start" ? (view.title ?? "") : "";
 }
 
+/** A view's emoji icon, when the line it was opened from had one. */
+function viewIcon(view: View): string {
+  return view.kind === "root" ? "" : view.icon ?? "";
+}
+
 /** The mark a view's title has on the loading screen: the one its line had in the list. */
 function viewMark(view: View): "page" | "database" | null {
   return view.kind === "database" ? "database" : view.kind === "page" || view.kind === "start" ? "page" : null;
@@ -215,7 +220,7 @@ function main(): void {
    * A title shown on opening a page read before, with its mark, or a note:
    * over the list, for a moment. `detail` null: what the list holds.
    */
-  let banner: { title: string; detail: string | null; mark: "page" | "database" | null } | null = null;
+  let banner: { title: string; detail: string | null; mark: "page" | "database" | null; icon: string } | null = null;
   let bannerTimer: ReturnType<typeof setTimeout> | undefined;
   /**
    * Where the view being read was opened from: the left of a line of one row,
@@ -373,7 +378,7 @@ function main(): void {
 
   function content(): Element[] {
     const logo = config?.logo === true;
-    const messageFrame = (title: string, detail: string, kind: "page" | "database" | null = null) => message(title, detail, logo, kind);
+    const messageFrame = (title: string, detail: string, kind: "page" | "database" | null = null, icon = "") => message(title, detail, logo, kind, icon);
     if (!config) return messageFrame("Loading", "settings");
     if (config.token === "") return messageFrame("Set token", "in settings");
     if (config.token === null) return messageFrame("Bad token", "check the settings");
@@ -383,7 +388,7 @@ function main(): void {
     const title = viewTitle(view) || "Notion";
     if (banner) {
       const detail = banner.detail ?? (loaded ? count(entries) : "loading");
-      return banner.mark ? previewFrame(banner.title, detail, banner.mark, logo) : messageFrame(banner.title, detail);
+      return banner.mark ? previewFrame(banner.title, detail, banner.mark, logo, banner.icon) : messageFrame(banner.title, detail);
     }
     if (!loaded) return problem ? messageFrame(problem[0], problem[1]) : loadingFrame(title, logo, loadingAt);
     if (entries.length === 0) {
@@ -394,10 +399,10 @@ function main(): void {
       if (view.kind === "root" && roots && roots.searching) return loadingFrame("Notion", logo);
       // An internal connection sees only pages shared with it: ••• > Connections in Notion.
       if (view.kind === "root") return messageFrame("No pages", "share pages with the connection");
-      return messageFrame(title, "no tasks or pages", viewMark(view));
+      return messageFrame(title, "no tasks or pages", viewMark(view), viewIcon(view));
     }
     const state = shownState();
-    if (!state.any) return messageFrame(title, "no tasks or pages", viewMark(view));
+    if (!state.any) return messageFrame(title, "no tasks or pages", viewMark(view), viewIcon(view));
     // Ticks are looked up for the lines on screen only, not the whole list.
     const list = listFrame(state.lines, selected, (e: Entry) => isTask(e) && isDone(e), logo, openHere(), focusOf(state.lines[selected]));
     return list;
@@ -458,9 +463,9 @@ function main(): void {
     }
   }
 
-  function showBanner(title: string, detail: string | null, ms: number, mark: "page" | "database" | null = null): void {
+  function showBanner(title: string, detail: string | null, ms: number, mark: "page" | "database" | null = null, icon = ""): void {
     if (bannerTimer !== undefined) clearTimeout(bannerTimer);
-    banner = { title, detail, mark };
+    banner = { title, detail, mark, icon };
     bannerTimer = setTimeout(() => {
       bannerTimer = undefined;
       banner = null;
@@ -865,7 +870,7 @@ function main(): void {
     stack.push(view);
     enter(current());
     // Remembered: its name for a moment, then the list. Not yet: the loading screen, which has its name.
-    if (loaded) showBanner(title, null, BANNER_MS, viewMark(view));
+    if (loaded) showBanner(title, null, BANNER_MS, viewMark(view), viewIcon(view));
     else redraw();
   }
 
@@ -925,7 +930,7 @@ function main(): void {
       const target = pointing.target;
       if (target === "title") {
         dropPointing();
-        if (entry.kind === "row") go({ kind: "page", id: entry.id, title: entry.title }, entry.title, entry);
+        if (entry.kind === "row") go({ kind: "page", id: entry.id, title: entry.title, icon: entry.icon }, entry.title, entry);
         else if (entry.link) go({ kind: "start", id: entry.link, title: entry.title }, entry.title, entry);
         return;
       }
@@ -949,7 +954,7 @@ function main(): void {
       return;
     }
     if (entry.kind === "page" || entry.kind === "database") {
-      go({ kind: entry.kind, id: entry.id, title: entry.title }, entry.title, entry);
+      go({ kind: entry.kind, id: entry.id, title: entry.title, icon: entry.icon }, entry.title, entry);
       return;
     }
     if (opens(entry)) {

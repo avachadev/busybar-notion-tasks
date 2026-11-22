@@ -70,6 +70,7 @@ import {
   tagLook,
   textWidth,
 } from "./layout.ts";
+import { emojiIcon } from "./emoji.ts";
 import type { Entry } from "./tasks.ts";
 
 export type Element = DisplayDrawParams["elements"][number];
@@ -422,7 +423,8 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
     if (link) out.push(mark(`chevron${slot}`, "chevron", CHEVRON_X, y + CHEVRON_INSET_Y, onMark ? dim(MARK_COLOR) : MARK_COLOR));
     if (onTitle) out.push(mark(`go${slot}`, "go", textX - 2, y + 3, TEXT_IDLE.substring(0, 7)));
   } else if (entry.kind === "page" || entry.kind === "database") {
-    out.push(mark(`mark${slot}`, entry.kind, markX, markY, markColor));
+    const emoji = entry.icon ? emojiMark(`emoji${slot}`, entry.icon, markX, markY, !focused) : null;
+    out.push(emoji ?? mark(`mark${slot}`, entry.kind, markX, markY, markColor));
     out.push(mark(`chevron${slot}`, "chevron", CHEVRON_X, y + CHEVRON_INSET_Y, markColor));
     out.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, ink, CHEVRON_X - 2 - textX));
   } else if (entry.kind === "toggle") {
@@ -443,6 +445,24 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
 function animation(id: string, x: number, y: number, file: string, stock: boolean, z: number): Element {
   return remember(`a|${id}|${x}|${y}|${file}`, () => ({
     id, type: "animation", display: "front", align: "top_left", x, y, [stock ? "stock_path" : "path"]: file, loop: true, z_index: z,
+  }) as unknown as Element);
+}
+
+/**
+ * An emoji icon in a mark's 7x7 place: a one-frame section of an animation
+ * pack, which the bar keeps on screen once drawn. The bar does not switch an
+ * animation element to another section, so the id names the emoji (and the
+ * look): another emoji or another look is another element, and the old one
+ * leaves the frame and is deleted (`main.ts`). Away from the focus it is
+ * dimmed as the marks are. Null when the emoji has no picture.
+ */
+function emojiMark(id: string, emoji: string, x: number, y: number, dimmed: boolean, z = 1): Element | null {
+  const icon = emojiIcon(emoji);
+  if (!icon) return null;
+  const key = `${id}_${icon.section}${dimmed ? "_d" : ""}`;
+  return remember(`em|${key}|${x}|${y}|${z}`, () => ({
+    id: key, type: "animation", display: "front", align: "top_left", x, y,
+    path: icon.file, section: icon.section, loop: false, opacity: dimmed ? 40 : 100, z_index: z,
   }) as unknown as Element);
 }
 
@@ -489,11 +509,11 @@ export function lineLeft(entry: Entry, logo: boolean): number {
  * and under it, in grey, what it holds, on the lines of a row with a status,
  * so opening one does not move the text. Then the list.
  */
-export function previewFrame(title: string, detail: string, kind: "page" | "database", logo = false): Element[] {
+export function previewFrame(title: string, detail: string, kind: "page" | "database", logo = false, emoji = ""): Element[] {
   const x0 = listX(logo);
   const textX = x0 + TEXT_INSET_X;
   const out: Element[] = logo ? [icon()] : [];
-  out.push(mark("topmark", kind, x0 + CHECKBOX_INSET_X, PREVIEW_MARK_Y));
+  out.push(emojiMark("topemoji", emoji, x0 + CHECKBOX_INSET_X, PREVIEW_MARK_Y, false) ?? mark("topmark", kind, x0 + CHECKBOX_INSET_X, PREVIEW_MARK_Y));
   out.push(topTitle(title, logo, PREVIEW_TITLE_Y));
   out.push(text("topdetail", textX, PREVIEW_DETAIL_Y, printable(detail), TEXT_EDGE, SCREEN_W - 1 - textX));
   return out;
@@ -507,7 +527,7 @@ export function previewFrame(title: string, detail: string, kind: "page" | "data
  * does not move between screens. An opaque black backdrop above everything
  * else hides whatever was on screen the moment the message is drawn.
  */
-export function messageFrame(title: string, detail: string, logo = false, kind: "page" | "database" | null = null): Element[] {
+export function messageFrame(title: string, detail: string, logo = false, kind: "page" | "database" | null = null, emoji = ""): Element[] {
   const x0 = listX(logo);
   const textX = x0 + TEXT_INSET_X;
   const room = SCREEN_W - 1 - textX;
@@ -543,8 +563,9 @@ export function messageFrame(title: string, detail: string, logo = false, kind: 
   }) as Element);
   const out: Element[] = logo ? [icon(), backdrop] : [backdrop];
   if (kind) {
+    const drawn = emojiMark("m_emoji", emoji, x0 + CHECKBOX_INSET_X, PREVIEW_MARK_Y, false, 4);
     const m = mark("m_mark", kind, x0 + CHECKBOX_INSET_X, PREVIEW_MARK_Y);
-    out.push(remember(`mm|${kind}|${x0}`, () => ({ ...m, z_index: 4 }) as Element));
+    out.push(drawn ?? remember(`mm|${kind}|${x0}`, () => ({ ...m, z_index: 4 }) as Element));
   }
   out.push(line("m_title", PREVIEW_TITLE_Y, title, MESSAGE_COLOR), line("m_detail", PREVIEW_DETAIL_Y, detail, TEXT_EDGE));
   return out;

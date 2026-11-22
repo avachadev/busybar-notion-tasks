@@ -291,3 +291,21 @@ test("opened from a line of one row, the loading screen keeps that line where it
   assert.deepEqual([line.text1.x, line.text1.y], [inPlace.toptitle.x, inPlace.toptitle.y]);
   assert.ok(byId(loadingFrame("Notes")).loadbars);
 });
+
+test("a page or database with an emoji icon shows it in its mark's place, from its pack, dimmed away from the focus", () => {
+  const lines: Entry[] = [{ kind: "page", id: "a", title: "Lists", icon: "\u{1f604}" }, { kind: "database", id: "b", title: "People", icon: "❤️" }];
+  const els = byId(listFrame(lines, 0, new Set()));
+  const focused = Object.values(els).find((e) => String(e.id).startsWith("emoji1_"))!;
+  assert.equal(focused.type, "animation");
+  assert.equal(focused.section, "1f604");
+  assert.match(String(focused.path), /^animations\/e_[0-9a-f]{2}\.anim$/);
+  assert.deepEqual([focused.x, focused.y, focused.loop, focused.opacity], [1, 4, false, 100]);
+  assert.equal(els.mark1, undefined);
+  const other = Object.values(els).find((e) => String(e.id).startsWith("emoji2_"))!;
+  assert.equal(other.section, "2764");
+  assert.equal(other.opacity, 40);
+  // In the preview too, in place of the mark.
+  const preview = byId(previewFrame("Lists", "3 pages", "page", false, "\u{1f604}"));
+  assert.equal(preview.topmark, undefined);
+  assert.ok(Object.values(preview).some((e) => e.section === "1f604"));
+});
