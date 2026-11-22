@@ -70,6 +70,9 @@ A status the database's view shows as a checkbox stays a checkbox.
 | Toggle | No plate; ▸ closed, ▾ open, the number of open tasks inside on the right. Toggles start closed. |
 | Heading | Grey text, no mark; the focus passes over it |
 
+A scrollbar in the rightmost column shows where the focus is in the list, as in the bar's own menus:
+a dim track and a white thumb, 1 px wide. The list stops 1 px short of it.
+
 A page, a database or a toggle that is not focused is grey, marks included, as the neighbours in the
 bar's APPS menu are: it shows there is more without drawing the eye. Tasks keep their look.
 

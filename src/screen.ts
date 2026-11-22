@@ -35,7 +35,12 @@ import {
   PLATE,
   LINE_GAP,
   LINE_H,
+  LIST_RIGHT,
   PLATE_H,
+  SCROLL_MIN,
+  SCROLL_THUMB,
+  SCROLL_TRACK,
+  SCROLL_X,
   SCREEN_H,
   SCREEN_W,
   STALE_COLOR,
@@ -142,7 +147,7 @@ function plate(id: string, x: number, y: number, done: boolean, height = PLATE_H
     align: "top_left",
     x,
     y,
-    width: SCREEN_W - x,
+    width: LIST_RIGHT - x,
     height,
     fill: "solid",
     fill_colors: [dimmed ? dim(look.fill) : look.fill],
@@ -298,7 +303,58 @@ export function listFrame(
     const open = entry.kind === "toggle" && openToggles.has(entry.id);
     for (const element of lineOf(entry, offset + 1, y, offset === 0, done, open, logo, offset === 0 ? focus : LIST)) elements.push(element);
   }
+  for (const element of scrollbar(entries, selected)) elements.push(element);
   return elements;
+}
+
+/**
+ * Each line's place among the lines the focus can stand on, worked out once a
+ * list: a loop over a long page costs the bar milliseconds, a frame should not.
+ */
+let placesFor: { lines: readonly Entry[]; at: number[]; count: number } | null = null;
+
+function places(lines: readonly Entry[]): { at: number[]; count: number } {
+  if (!placesFor || placesFor.lines !== lines) {
+    const at: number[] = [];
+    let count = 0;
+    for (let i = 0; i < lines.length; i += 1) {
+      at.push(count);
+      if (lines[i].kind !== "heading") count += 1;
+    }
+    placesFor = { lines, at, count };
+  }
+  return placesFor;
+}
+
+function bar(id: string, y: number, height: number, color: string, z: number): Element {
+  return remember(`sb|${id}|${y}|${height}`, () => ({
+    id,
+    type: "rectangle",
+    display: "front",
+    align: "top_left",
+    x: SCROLL_X,
+    y,
+    width: 1,
+    height,
+    fill: "solid",
+    fill_colors: [color],
+    border_width: 0,
+    z_index: z,
+  }) as Element);
+}
+
+/**
+ * Where the focus is in the list, as the firmware's menus show it: the thumb
+ * moves down the track from the first line the focus can stand on to the
+ * last. Nothing when there is only one.
+ */
+export function scrollbar(lines: readonly Entry[], selected: number): Element[] {
+  const { at, count } = places(lines);
+  if (count < 2 || selected < 0 || selected >= lines.length) return [];
+  const height = Math.max(Math.floor(SCREEN_H / count), SCROLL_MIN);
+  const room = SCREEN_H - height;
+  const y = Math.floor((room * at[selected] + Math.floor((count - 1) / 2)) / (count - 1));
+  return [bar("scrolltrack", 0, SCREEN_H, SCROLL_TRACK, 1), bar("scrollthumb", y, height, SCROLL_THUMB, 2)];
 }
 
 /**
@@ -372,7 +428,7 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
     const box = done ? CHECKBOX_XPM.done : onMark ? BOX_POINTED : CHECKBOX_XPM.idle;
     const boxKey = `${done ? "done" : onMark ? "pointed" : "idle"}${onTitle ? "-dim" : ""}`;
     out.push(xpm(`mark${slot}`, markX, markY, onTitle ? recolor(box, dim) : box, boxKey));
-    out.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, onMark ? dim(ink) : ink, (link ? CHEVRON_X - 2 : SCREEN_W) - textX));
+    out.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, onMark ? dim(ink) : ink, (link ? CHEVRON_X - 2 : LIST_RIGHT) - textX));
     if (link) out.push(mark(`chevron${slot}`, "chevron", CHEVRON_X, y + CHEVRON_INSET_Y, onMark ? dim(MARK_COLOR) : MARK_COLOR));
     if (onTitle) out.push(mark(`go${slot}`, "go", textX - 2, y + 3, TEXT_IDLE.substring(0, 7)));
   } else if (entry.kind === "page" || entry.kind === "database") {
@@ -382,13 +438,13 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
   } else if (entry.kind === "toggle") {
     out.push(mark(`mark${slot}`, open ? "toggleOpen" : "toggleClosed", markX, markY, markColor));
     const count = String(entry.count ?? 0);
-    const countX = SCREEN_W - 1 - textWidth(count);
+    const countX = LIST_RIGHT - 1 - textWidth(count);
     if (entry.count) out.push(text(`count${slot}`, countX, y + TEXT_INSET_Y, count, focused ? COUNT_COLOR : TEXT_EDGE, null));
-    const room = (entry.count ? countX - 1 : SCREEN_W) - textX;
+    const room = (entry.count ? countX - 1 : LIST_RIGHT) - textX;
     out.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, ink, room));
   } else {
     // A heading is never focused: grey, as any line without a plate away from the focus.
-    out.push(line(`text${slot}`, x0 + 1, y + TEXT_INSET_Y, entry.title, TEXT_EDGE, SCREEN_W - x0 - 1));
+    out.push(line(`text${slot}`, x0 + 1, y + TEXT_INSET_Y, entry.title, TEXT_EDGE, LIST_RIGHT - x0 - 1));
   }
   return out;
 }

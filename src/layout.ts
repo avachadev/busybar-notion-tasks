@@ -15,6 +15,18 @@ import { small } from "@busy-app/busy-lib/fonts";
 export const SCREEN_W = 72;
 export const SCREEN_H = 16;
 
+/**
+ * The scrollbar the firmware's menus draw (APPS, measured on 1.4.1): 1 px in
+ * the rightmost column, the track white at 20% (#313131 on the bar), the thumb
+ * white, 16/n px tall and at least 3. The list stops 1 px short of it: plates,
+ * chevrons and counts end at LIST_RIGHT.
+ */
+export const SCROLL_X = SCREEN_W - 1;
+export const SCROLL_TRACK = "#313131FF";
+export const SCROLL_THUMB = "#FFFFFFFF";
+export const SCROLL_MIN = 3;
+export const LIST_RIGHT = SCREEN_W - 2;
+
 export const FONT = "small";
 registerFontMaps(small);
 
@@ -92,7 +104,7 @@ export const MARK_COLOR = "#8C8B85";
 export const TEXT_EDGE = "#FFFFFF66";
 export const MARK_EDGE = "#5F5E58";
 /** The chevron at the right of a page or a database: 3x5, 1 px in from the screen's edge. */
-export const CHEVRON_X = SCREEN_W - 4;
+export const CHEVRON_X = LIST_RIGHT - 4;
 export const CHEVRON_INSET_Y = 2;
 
 /**

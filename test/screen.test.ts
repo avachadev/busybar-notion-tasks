@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { printable, textWidth } from "../src/layout.ts";
-import { fit, listFrame, messageFrame, placeLines } from "../src/screen.ts";
+import { fit, listFrame, messageFrame, placeLines, scrollbar } from "../src/screen.ts";
 import type { Entry } from "../src/tasks.ts";
 
 const todo = (id: string, title: string): Entry => ({ kind: "todo", id, title });
@@ -19,7 +19,8 @@ test("without the logo the list takes the whole screen", () => {
   assert.equal(els.icon, undefined);
   assert.equal(els.row1.x, 0);
   assert.equal(els.row1.type, "rectangle");
-  assert.equal(els.row1.width, 72);
+  // The plate stops 1 px short of the scrollbar in the last column.
+  assert.equal(els.row1.width, 70);
   assert.equal(els.mark1.x, 1);
   assert.equal(els.text1.x, 10);
   const msg = byId(messageFrame("All done", "for today"));
@@ -49,7 +50,7 @@ test("the first entry has nothing above it", () => {
 test("a ticked task gets the highlighted row, the blue checkbox and faded text", () => {
   const els = byId(listFrame([todo("a", "One"), todo("b", "Two")], 0, new Set(["a"]), true));
   assert.equal(els.row1.fill_colors[0], "#1B2027FF");
-  assert.equal(els.row1.width, 62);
+  assert.equal(els.row1.width, 60);
   assert.match(String(els.mark1.data), /#2883DF/);
   assert.equal(els.text1.color, "#FFFFFF66");
   assert.equal(els.row2.fill_colors[0], "#161616FF");
@@ -71,7 +72,7 @@ test("only tasks have a plate; pages and databases a mark and a chevron", () => 
   ));
   assert.equal(els.mark1.type, "xpmbitmap");
   assert.equal(els.mark2.type, "xpmbitmap");
-  assert.equal(els.chevron1.x, 68);
+  assert.equal(els.chevron1.x, 66);
   assert.equal(els.row1, undefined);
   assert.match(String(els.mark1.data), /####/);
   // The focused line scrolls short of the chevron.
@@ -98,7 +99,7 @@ test("nesting moves a line 3 px right per level, up to three; a heading is faded
   assert.equal(els.text0.x, 1);
   assert.equal(els.text0.color, "#FFFFFF66");
   assert.equal(els.row1.x, 9);
-  assert.equal(els.row1.width, 63);
+  assert.equal(els.row1.width, 61);
   assert.equal(els.mark1.x, 10);
   assert.equal(els.mark2.x, 4);
 });
@@ -216,4 +217,21 @@ test("a to-do that links a page has a chevron and two parts; one that does not h
   const onTitle = byId(listFrame([linked], 0, new Set(), false, new Set(), { mode: "title" }));
   assert.ok(onTitle.go1);
   assert.equal(onTitle.text1.color, "#FFFFFFFF");
+});
+
+test("the scrollbar is the firmware's: 1 px on the right, the thumb moving from the first focusable line to the last", () => {
+  const lines: Entry[] = [{ kind: "heading", id: "h", title: "Week" }, ...Array.from({ length: 10 }, (_, i) => todo(`t${i}`, `Task ${i}`))];
+  const at = (i: number) => byId(scrollbar(lines, i));
+  assert.equal(at(1).scrolltrack.x, 71);
+  assert.equal(at(1).scrolltrack.height, 16);
+  assert.equal(at(1).scrolltrack.fill_colors[0], "#313131FF");
+  assert.equal(at(1).scrollthumb.height, 3);
+  assert.equal(at(1).scrollthumb.y, 0);
+  assert.equal(at(10).scrollthumb.y, 13);
+  assert.equal(at(6).scrollthumb.y, 7);
+  assert.deepEqual(scrollbar([todo("a", "Only")], 0), []);
+  assert.equal(byId(scrollbar([todo("a", "A"), todo("b", "B")], 0)).scrollthumb.height, 8);
+  // In the frame too, and the list ends at x 70.
+  const frame = byId(listFrame(lines, 3, new Set()));
+  assert.ok(frame.scrollthumb);
 });
