@@ -25,7 +25,7 @@ test("without the logo the list takes the whole screen", () => {
   assert.equal(els.text1.x, 10);
   const msg = byId(messageFrame("All done", "for today"));
   assert.equal(msg.icon, undefined);
-  assert.equal(msg.m_title.x, 36);
+  assert.equal(msg.m_title.x, 10);
 });
 
 test("with the logo the focused row sits in the middle beside the icon, its neighbours at the edges", () => {
@@ -111,18 +111,25 @@ test("lines that are not focused are cut to their room", () => {
   assert.equal(fit("Short", 60), "Short");
 });
 
-test("messages are two centred lines", () => {
-  const els = byId(messageFrame("All done", "for today", true));
+test("messages are two lines from the list's text x, on the preview's lines, the view's mark at the left when they are about one", () => {
+  const els = byId(messageFrame("All done", "for today", true, "database"));
   // The icon stays above the backdrop, so it is on every screen.
   assert.ok((els.icon.z_index as number) > (els.m_backdrop.z_index as number));
-  assert.equal(els.m_title.x, 41);
-  assert.equal(els.m_title.align, "top_mid");
-  // An opaque backdrop above the list hides it the moment the message is drawn.
+  assert.deepEqual([els.m_title.x, els.m_title.y, els.m_title.align], [20, 0, "top_left"]);
+  assert.deepEqual([els.m_detail.x, els.m_detail.y, els.m_detail.color], [20, 7, "#FFFFFF66"]);
+  assert.deepEqual([els.m_mark.x, els.m_mark.y], [11, 1]);
+  // An opaque backdrop above the list hides it the moment the message is drawn; the mark is above it.
   assert.equal(els.m_backdrop.width, 72);
   assert.ok((els.m_backdrop.z_index as number) > 2 && (els.m_title.z_index as number) > (els.m_backdrop.z_index as number));
-  assert.equal(els.m_detail.y, 7);
+  assert.ok((els.m_mark.z_index as number) > (els.m_backdrop.z_index as number));
+  // A message about the app has no mark, and its text stands where it would with one.
+  const app = byId(messageFrame("Set token", "in settings"));
+  assert.equal(app.m_mark, undefined);
+  assert.equal(app.m_title.x, 10);
+  // As on the preview of a page.
+  const preview = byId(previewFrame("Projects", "3 tasks", "page"));
+  assert.deepEqual([app.m_title.y, app.m_detail.y], [preview.toptitle.y, preview.topdetail.y]);
 });
-
 test("characters the bar's font lacks are replaced or left out", () => {
   assert.equal(printable("\u0414\u0435\u043b\u0430 \u2116 1"), "\u0414\u0435\u043b\u0430 No 1");
   assert.equal(printable("\ud83d\ude80 Launch \u2705"), "Launch");

@@ -190,7 +190,6 @@ export const PREVIEW_DETAIL_Y = TAG_TEXT_Y;
 export const STALE_COLOR = "#FF8A3DFF";
 
 export const MESSAGE_COLOR = "#FFFFFFFF";
-export const MESSAGE_DIM_COLOR = "#FFFFFF99";
 
 /** Where the list starts: the screen's left edge, or 2 px right of the icon. */
 export function listX(logo: boolean): number {

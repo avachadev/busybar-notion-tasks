@@ -31,7 +31,6 @@ import {
   MARK_COLOR,
   MARK_EDGE,
   MESSAGE_COLOR,
-  MESSAGE_DIM_COLOR,
   PLATE,
   LINE_GAP,
   LINE_H,
@@ -506,31 +505,31 @@ export function previewFrame(title: string, detail: string, kind: "page" | "data
 }
 
 /**
- * Shown while there is no list: two short centred lines, the second dimmed
- * and scrolling when it is long. They sit on an opaque black backdrop above
- * everything else, so whatever was on screen is hidden the moment the message
- * is drawn, before the old elements are cleared.
+ * Shown while there is no list: the title on the top line and, in grey under
+ * it, what happened or what to do, on the preview's lines, from the list's
+ * text x like every screen of the app. A message about a view has its mark at
+ * the left; one about the app as a whole leaves the place empty, so the text
+ * does not move between screens. An opaque black backdrop above everything
+ * else hides whatever was on screen the moment the message is drawn.
  */
-export function messageFrame(title: string, detail: string, logo = false): Element[] {
-  // Centred in the room right of the icon, or on the whole screen.
+export function messageFrame(title: string, detail: string, logo = false, kind: "page" | "database" | null = null): Element[] {
   const x0 = listX(logo);
-  const middle = x0 + (SCREEN_W - x0) / 2;
-  const inner = SCREEN_W - x0 - 2;
+  const textX = x0 + TEXT_INSET_X;
+  const room = SCREEN_W - 1 - textX;
   const line = (id: string, y: number, raw: string, color: string): Element => remember(`ml|${id}|${y}|${logo}|${color}|${raw}`, () => {
     const value = printable(raw);
-    const long = textWidth(value) > inner;
     return {
       id,
       type: "text",
       display: "front",
-      align: long ? "top_left" : "top_mid",
-      x: long ? x0 + 1 : middle,
+      align: "top_left",
+      x: textX,
       y,
       text: value,
       font: FONT,
       color,
       z_index: 4,
-      ...(long ? scrolling(inner) : {}),
+      ...(textWidth(value) > room ? scrolling(room) : {}),
     } as Element;
   });
   const backdrop: Element = remember("m_backdrop", () => ({
@@ -547,7 +546,11 @@ export function messageFrame(title: string, detail: string, logo = false): Eleme
     border_width: 0,
     z_index: 3,
   }) as Element);
-  // The font's 2 px top bearing: these anchors put the ink on rows 2..6 and 9..13.
-  const lines = [backdrop, line("m_title", 0, title, MESSAGE_COLOR), line("m_detail", 7, detail, MESSAGE_DIM_COLOR)];
-  return logo ? [icon(), ...lines] : lines;
+  const out: Element[] = logo ? [icon(), backdrop] : [backdrop];
+  if (kind) {
+    const m = mark("m_mark", kind, x0 + CHECKBOX_INSET_X, PREVIEW_MARK_Y);
+    out.push(remember(`mm|${kind}|${x0}`, () => ({ ...m, z_index: 4 }) as Element));
+  }
+  out.push(line("m_title", PREVIEW_TITLE_Y, title, MESSAGE_COLOR), line("m_detail", PREVIEW_DETAIL_Y, detail, TEXT_EDGE));
+  return out;
 }

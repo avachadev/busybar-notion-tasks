@@ -336,7 +336,7 @@ function main(): void {
 
   function content(): Element[] {
     const logo = config?.logo === true;
-    const messageFrame = (title: string, detail: string) => message(title, detail, logo);
+    const messageFrame = (title: string, detail: string, kind: "page" | "database" | null = null) => message(title, detail, logo, kind);
     if (!config) return messageFrame("Loading", "settings");
     if (config.token === "") return messageFrame("Set token", "in settings");
     if (config.token === null) return messageFrame("Bad token", "check the settings");
@@ -351,16 +351,16 @@ function main(): void {
     if (!loaded) return problem ? messageFrame(problem[0], problem[1]) : loadingFrame(title, logo);
     if (entries.length === 0) {
       if (view.kind === "database") {
-        return config.scope === "today" ? messageFrame("All done", "for today") : messageFrame("All done", "no open tasks");
+        return config.scope === "today" ? messageFrame("All done", "for today", "database") : messageFrame("All done", "no open tasks", "database");
       }
       // The first sweep is still under way: the top level fills in as it goes.
       if (view.kind === "root" && roots && roots.searching) return loadingFrame("Notion", logo);
       // An internal connection sees only pages shared with it: ••• > Connections in Notion.
       if (view.kind === "root") return messageFrame("No pages", "share pages with the connection");
-      return messageFrame(title, "no tasks or pages");
+      return messageFrame(title, "no tasks or pages", viewMark(view));
     }
     const state = shownState();
-    if (!state.any) return messageFrame(title, "no tasks or pages");
+    if (!state.any) return messageFrame(title, "no tasks or pages", viewMark(view));
     // Ticks are looked up for the lines on screen only, not the whole list.
     const list = listFrame(state.lines, selected, (e: Entry) => isTask(e) && isDone(e), logo, openHere(), focusOf(state.lines[selected]));
     if (stale) list.push(staleMark(logo));
