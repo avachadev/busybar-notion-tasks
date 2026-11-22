@@ -24,6 +24,8 @@ off. What it does, its settings and its files: [README.md](README.md).
     keeps the block; otherwise its block id is found by walking the page's blocks once (`source.ts`);
   - a database's first view (`GET /v1/views?database_id=`, then `GET /v1/views/{id}`) gives its sorts
     and how it shows the status; any 4xx but 401 and 429 there means no view, and the app's own order.
+- Text: the bar's `toLowerCase` lowers ASCII only ("Готово" stays as it is, measured 22.11); match names
+  with `lower()` from `tasks.ts`.
 - Keys: the app gets the wheel, OK, Start and Back (firmware docs, appendix 3); there are no left and
   right keys. A database row's title always opens and nothing under it is read before it is opened
   (`docs/databases.md`).
@@ -67,7 +69,9 @@ off. What it does, its settings and its files: [README.md](README.md).
 Use the bar's own log, not the screen: polling `/api/screen` loads the same web server the app draws
 through. `telnet 10.0.4.20`, `log error`, and one `console.error` line per frame with `Date.now()`
 differences (console.log does not reach the log). `log trace` shows the firmware's file work too.
-Send input with single `POST /api/input` requests a second or more apart.
+Send input with single `POST /api/input` requests a second or more apart. `key=up` turns the wheel
+forward (down the list), `key=down` back. A script that presses Back once too often leaves the app and
+goes on pressing in the firmware's menus.
 
 Edge cases live in a test page in Notion (600 to-dos, a 204 KB page of notes,
 120 subpages, deep nesting, odd titles, big and wide databases). Point **Start page** at it to test,

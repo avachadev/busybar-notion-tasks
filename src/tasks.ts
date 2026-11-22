@@ -115,6 +115,21 @@ export const MAX_TITLE = 80;
 // "done", "made", "completed"; below, "deadline", "date" and "done", "finished".
 const DONE_NAMES = ["done", "complete", "completed", "finished", "\u0433\u043e\u0442\u043e\u0432\u043e", "\u0441\u0434\u0435\u043b\u0430\u043d\u043e", "\u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e"];
 
+/**
+ * Lower case, Russian included. The bar's JavaScript lowers ASCII only:
+ * measured 22.11.2026 on 1.4.1, "\u0413\u043e\u0442\u043e\u0432\u043e".toLowerCase() comes back unchanged.
+ */
+export function lower(s: string): string {
+  const l = s.toLowerCase();
+  if (!/[\u0400-\u042f]/.test(l)) return l;
+  let out = "";
+  for (let i = 0; i < l.length; i += 1) {
+    const c = l.charCodeAt(i);
+    out += c >= 0x410 && c <= 0x42f ? String.fromCharCode(c + 0x20) : c >= 0x400 && c <= 0x40f ? String.fromCharCode(c + 0x50) : l.charAt(i);
+  }
+  return out;
+}
+
 function record(value: unknown): Json {
   return typeof value === "object" && value !== null ? (value as Json) : {};
 }
@@ -178,7 +193,7 @@ function statusField(id: string, config: Json, asCheckbox: boolean): DoneField |
 /** A select with an option named like "Done": that one is done, the first other one to do, the rest in progress. */
 function selectField(id: string, config: Json): DoneField | null {
   const raw = list(config.options).map(record);
-  const doneName = raw.map((o) => str(o.name)).find((n) => DONE_NAMES.indexOf(n.toLowerCase()) >= 0);
+  const doneName = raw.map((o) => str(o.name)).find((n) => DONE_NAMES.indexOf(lower(n)) >= 0);
   if (!doneName) return null;
   const openTo = raw.map((o) => str(o.name)).find((n) => n !== doneName) ?? null;
   const options: Option[] = raw.map((o) => {
@@ -209,7 +224,7 @@ export function readSchema(dataSource: Json, view: ViewInfo | null = null): Sche
   for (const key of Object.keys(props)) {
     const prop = record(props[key]);
     const id = str(prop.id);
-    const name = str(prop.name || key).toLowerCase();
+    const name = lower(str(prop.name || key));
     const type = str(prop.type);
     const chosen = view !== null && (view.groupBy === id || view.checkboxIds.indexOf(id) >= 0);
     if (type === "title") titleId = id;

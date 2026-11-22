@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { foundInSearch, hasTag, mergeRoots, rootsInSearch, pickRoots, localDate, localDayStart, openFirst, plainText, queryBody, queryPath, readSchema, readViewInfo, setDoneCall, tasksFromQuery } from "../src/tasks.ts";
+import { foundInSearch, hasTag, lower, mergeRoots, rootsInSearch, pickRoots, localDate, localDayStart, openFirst, plainText, queryBody, queryPath, readSchema, readViewInfo, setDoneCall, tasksFromQuery } from "../src/tasks.ts";
 
 const rt = (s: string) => [{ type: "text", plain_text: s }];
 
@@ -294,4 +294,11 @@ test("a quick check of the top level adds new pages and databases and renames th
   assert.deepEqual(found.map((e) => e.id), ["new", "db", "a"]);
   const roots = [{ kind: "page" as const, id: "a", title: "Archive" }, { kind: "page" as const, id: "z", title: "Zoo" }];
   assert.deepEqual(mergeRoots(roots, found).map((e) => e.title), ["Archive 2", "Inbox", "People", "Zoo"]);
+});
+
+test("Russian is lowered without the runtime's help", () => {
+  // The bar's toLowerCase leaves Cyrillic as it is; the test runs where it would not, so the result is what counts.
+  assert.equal(lower("\u0413\u041e\u0422\u041e\u0412\u041e \u0401 Done"), "\u0433\u043e\u0442\u043e\u0432\u043e \u0451 done");
+  const db = { properties: { T: { id: "t", type: "title" }, S: { id: "s", type: "select", select: { options: [{ name: "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435" }, { name: "\u0413\u043e\u0442\u043e\u0432\u043e" }] } } } };
+  assert.equal(readSchema(db)!.done!.kind, "select");
 });

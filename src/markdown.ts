@@ -15,7 +15,7 @@
  */
 
 import { dashed } from "./link.ts";
-import { type Entry, MAX_TITLE } from "./tasks.ts";
+import { type Entry, MAX_TITLE, lower } from "./tasks.ts";
 
 const TODO = /^\s*- \[([ xX])\] ?(.*)$/;
 const HEX32 = /^[0-9a-fA-F]{32}$/;
@@ -118,7 +118,7 @@ export function inlineText(md: string): string {
 /** For telling a to-do in the markdown from its block: letters and digits only, any case. */
 export function sameText(a: string, b: string): boolean {
   // No Unicode property escapes: the bar's JerryScript may lack them, so punctuation is listed.
-  const key = (s: string) => s.toLowerCase().replace(/[\s.,:;!?'"()[\]{}<>«»–—\-_*`~/\\|@#$%^&+=]+/g, "");
+  const key = (s: string) => lower(s).replace(/[\s.,:;!?'"()[\]{}<>«»–—\-_*`~/\\|@#$%^&+=]+/g, "");
   const x = key(a);
   const y = key(b);
   return x === y || (x.length >= 8 && y.length >= 8 && (x.indexOf(y) >= 0 || y.indexOf(x) >= 0));
