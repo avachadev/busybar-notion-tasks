@@ -116,12 +116,13 @@ export const TAG_TITLE_X = 5;
 export const TAG_X = 3;
 /**
  * Pointing at a row's title or its status, the firmware's cursor `▶` (2x3)
- * stands against the plate's left edge, its tip 2 px before the text: before
+ * stands on the plate's left edge (22.11: 1 px further left than
+ * inside it), its tip 3 px before the text: before
  * the title, and before the tag's text, the tag's own inset being those 2 px.
  * Choosing the status, the firmware's `‹` takes its place and `›` follows the
  * tag 1 px after it, as the value of a setting in SETTINGS.
  */
-export const POINTER_X = 1;
+export const POINTER_X = 0;
 export const TAG_TOP = 8;
 export const TAG_H = 7;
 export const TAG_TEXT_Y = 7;
