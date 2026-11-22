@@ -208,7 +208,12 @@ function statusField(id: string, config: Json, asCheckbox: boolean): DoneField |
     }
     return "todo";
   };
-  const options: Option[] = list(config.options).map(record).map((o) => ({ name: str(o.name), color: str(o.color) || "default", group: groupOf(str(o.id)) }));
+  // An option named like "Done" closes a task whatever group it was left in: the API, for one, puts
+  // every option of a new status in To-do (seen 22.11), and people move options around.
+  const options: Option[] = list(config.options).map(record).map((o) => {
+    const name = str(o.name);
+    return { name, color: str(o.color) || "default", group: doneLike(name) ? "done" : groupOf(str(o.id)) };
+  });
   const doneNames = options.filter((o) => o.group === "done").map((o) => o.name);
   const openNames = options.filter((o) => o.group !== "done").map((o) => o.name);
   const fallback = str(config.default_option);

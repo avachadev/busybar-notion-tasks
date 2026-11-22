@@ -5,7 +5,7 @@
     "token": {
       "type": "string",
       "label": "Notion token",
-      "description": "A Notion personal access token, or an internal connection's API token shared with your list. The bar's HTTP API gives it out: protect the API with a password.",
+      "description": "Paste your personal access token from https://app.notion.com/developers/tokens",
       "default": "",
       "sensitive": true,
       "max_length": 255

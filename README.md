@@ -121,7 +121,7 @@ for come soonest first, open rows before done ones. The app finds the properties
 
 - **Status**: the property the first view groups by or shows as a checkbox; else a checkbox named like
   *Done*, *Complete* or *Finished* (or its Russian equivalent); else a status property, where any option
-  in its third group (*Complete*) means done; else a select with an option named like *Done* (emoji and
+  in its third group (*Complete*), or named like *Done* in any group, means done; else a select with an option named like *Done* (emoji and
   punctuation aside: *✅ Done* counts); else the database's only checkbox. A database with several data sources uses the view's own, else the first that has one of
   these. A database with none of them shows its rows as pages.
 - **Due date**: a date property named like *Due* or *Date*; else the first date property. A database
@@ -135,7 +135,7 @@ so "ticked off today" means a done row edited since midnight by the bar's clock.
 
 | Setting | What it does |
 | --- | --- |
-| **Notion token** | The personal access token or the connection's token. |
+| **Notion token** | Your personal access token, from https://app.notion.com/developers/tokens, or an internal connection's token. Until there is one, the front screen says to look at the back, and the back screen shows the address to open and where to paste it. |
 | **Start page** | Optional. Leave it empty to start from your top-level pages, or paste a link to a page or a database (**••• → Copy link** in Notion) to start there. |
 | **Show** | For databases with a date: *Due today, overdue or undated* (the default) or *All open tasks*. Pages always show every to-do. |
 | **Notion logo** | Off by default. On: the Notion logo at the left of the screen, for photos and videos. |

@@ -23,6 +23,7 @@ import manifest from "./appmeta/manifest.json";
 import { forgetOthers, type Level, load, save } from "./cache.ts";
 import { type Config, configKey, readConfig, tokenTag, usable } from "./config.ts";
 import { clearAll, deleteElements, drawElements, prepare } from "./display.ts";
+import { type SetupReason, type WebAddress, setupElements, webAddresses } from "./setup.ts";
 import { focusable, settle, step } from "./focus.ts";
 import { shownEntries } from "./markdown.ts";
 import { NotionError, wireIdle } from "./notion.ts";
@@ -154,7 +155,7 @@ function explain(err: unknown, failures: number): { problem: Problem; retryMs: n
   if (err instanceof NoDoneFieldError) return { problem: ["Can't read", "this database"], retryMs: MAX_RETRY_MS, drop: true };
   if (err instanceof MovedError) return { problem: ["Page changed", "try again"], retryMs: 0, drop: false };
   if (err instanceof NotionError) {
-    if (err.status === 401) return { problem: ["Bad token", "check the settings"], retryMs: MAX_RETRY_MS, drop: true };
+    if (err.status === 401) return { problem: ["Bad token", "look at the back"], retryMs: MAX_RETRY_MS, drop: true };
     if (err.status === 403 || err.status === 404) {
       return { problem: ["No access", "share it with the token"], retryMs: NO_ACCESS_RETRY_MS, drop: true };
     }
@@ -371,7 +372,8 @@ function main(): void {
     for (const id of inView) {
       if (ids[id]) continue;
       const gone = onScreen[id] as Element & { type: string };
-      if (gone.type === "animation") deleted.push(id);
+      // The back screen's setup help goes for good once it is not needed: deleted, as animations are.
+      if (gone.type === "animation" || id.substring(0, 2) === "b_") deleted.push(id);
       else changed.push({ ...gone, y: OFF_SCREEN_Y } as Element);
     }
     try {
@@ -393,8 +395,9 @@ function main(): void {
     const logo = config?.logo === true;
     const messageFrame = (title: string, detail: string, kind: "page" | "database" | null = null, icon = "") => message(title, detail, logo, kind, icon);
     if (!config) return messageFrame("Loading", "settings");
-    if (config.token === "") return messageFrame("Set token", "in settings");
-    if (config.token === null) return messageFrame("Bad token", "check the settings");
+    // No token the app can use: the back screen says what to do.
+    if (config.token === "") return messageFrame("Set up", "look at the back");
+    if (config.token === null) return messageFrame("Bad token", "look at the back");
     if (config.link.kind === "invalid") return messageFrame("Bad link", config.link.text);
 
     const view = current();
@@ -424,7 +427,40 @@ function main(): void {
   function frame(): Element[] {
     const elements = content();
     if (confetti) elements.push(confetti);
+    for (const element of setupScreen()) elements.push(element);
     return elements;
+  }
+
+  // ---- Setting up ----------------------------------------------------------
+
+  /** Where the bar's web page opens, looked up again every so often while the back screen shows it. */
+  let addresses: WebAddress[] = [];
+  let addressesAt = 0;
+  const ADDRESSES_MS = 30000;
+  /** The back screen's elements as last made: the same objects while nothing changed, so nothing is sent again. */
+  let setupMade: { key: string; elements: Element[] } | null = null;
+
+  /** Why the app needs the user, if it does: no token, one that cannot be a token, or one Notion refused. */
+  function setupReason(): SetupReason | null {
+    if (!config) return null;
+    if (config.token === "") return "none";
+    if (config.token === null || (problem !== null && problem[0] === "Bad token")) return "bad";
+    return null;
+  }
+
+  function setupScreen(): Element[] {
+    const reason = setupReason();
+    if (reason === null) return [];
+    const key = `${reason}|${addresses.map((a) => a.address).join(",")}`;
+    if (!setupMade || setupMade.key !== key) setupMade = { key, elements: setupElements(reason, addresses) as unknown as Element[] };
+    return setupMade.elements;
+  }
+
+  /** Looks up the bar's addresses when the back screen needs them: a cable may come, Wi-Fi may join. */
+  async function refreshAddresses(): Promise<void> {
+    if (setupReason() === null || Date.now() - addressesAt < ADDRESSES_MS) return;
+    addressesAt = Date.now();
+    addresses = await webAddresses();
   }
 
   /** At most one draw in flight; changes made meanwhile are drawn once it is done. */
@@ -1157,6 +1193,7 @@ function main(): void {
   async function tick(): Promise<void> {
     const idle = Date.now() - lastInputAt >= IDLE_MS;
     if (idle || config === null) await refreshConfig();
+    await refreshAddresses();
     if (idle && unsaved) persistNow();
     if (idle) roots?.save();
     maybeRead();

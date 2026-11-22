@@ -333,3 +333,18 @@ test("a read with nothing new gives back the old list itself; a changed entry al
   assert.notEqual(moved, old);
   assert.deepEqual([moved[0] === old[1], moved[1] === old[0]], [true, true]);
 });
+
+test("a status option named like Done closes a task even outside the Complete group", () => {
+  const db = { properties: {
+    Name: { id: "title", name: "Name", type: "title" },
+    Status: { id: "s", name: "Status", type: "status", status: {
+      options: [{ id: "1", name: "Backlog", color: "gray" }, { id: "2", name: "In progress", color: "blue" }, { id: "3", name: "✅ Done", color: "green" }],
+      // As the API leaves a new status: every option in To-do.
+      groups: [{ name: "To-do", option_ids: ["1", "2", "3"] }, { name: "In progress", option_ids: [] }, { name: "Complete", option_ids: [] }],
+    } },
+  } };
+  const done = readSchema(db)?.done;
+  assert.ok(done && done.kind === "status");
+  assert.deepEqual(done.doneNames, ["✅ Done"]);
+  assert.equal(done.closeTo, "✅ Done");
+});
