@@ -11,7 +11,8 @@
 import type { View } from "./source.ts";
 import type { Database, Entry } from "./tasks.ts";
 
-const KEY = "place";
+/** Bumped when what is saved changes shape: a place saved by an older version is not read. */
+const KEY = "place2";
 
 /** What one view showed. */
 export interface Level {

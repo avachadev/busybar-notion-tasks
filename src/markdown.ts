@@ -64,6 +64,38 @@ function openTag(text: string): { kind: "page" | "database"; url: string; rest: 
   return { kind, url: attrs.substring(at, end), rest: text.substring(close + 1) };
 }
 
+/** A URL that leads into Notion: only those can be opened on the bar, which has no browser. */
+function intoNotion(url: string): boolean {
+  return url.indexOf("notion.so") >= 0 || url.indexOf("notion.com") >= 0 || url.indexOf("notion.site") >= 0 || url.charAt(0) === "/";
+}
+
+/**
+ * The page or database a line's text mentions (`<mention url="...">`) or links
+ * (`[text](url)`), by id; "" when it has none in Notion. String search only: it
+ * runs on every to-do of a page.
+ */
+export function linkOf(md: string): string {
+  for (let at = md.indexOf("<mention"); at >= 0; at = md.indexOf("<mention", at + 1)) {
+    const end = md.indexOf(">", at);
+    if (end < 0) break;
+    const attrs = md.substring(at, end);
+    const u = attrs.indexOf(" url=\"");
+    if (u < 0) continue;
+    const close = attrs.indexOf("\"", u + 6);
+    const url = attrs.substring(u + 6, close < 0 ? attrs.length : close);
+    const id = intoNotion(url) ? idOf(url) : "";
+    if (id) return id;
+  }
+  for (let at = md.indexOf("]("); at >= 0; at = md.indexOf("](", at + 1)) {
+    const close = md.indexOf(")", at);
+    if (close < 0) break;
+    const url = md.substring(at + 2, close);
+    const id = intoNotion(url) ? idOf(url) : "";
+    if (id) return id;
+  }
+  return "";
+}
+
 const ENTITIES: Record<string, string> = { "&lt;": "<", "&gt;": ">", "&amp;": "&", "&quot;": "\"", "&#39;": "'" };
 
 /** Plain text of one line of Notion's markdown: no tags, links or escapes. */
@@ -179,7 +211,7 @@ export class PageReader {
     if (this.entries.length >= MAX_ENTRIES) this.full = true;
   }
 
-  private titled(title: string): void {
+  private titled(title: string, link = ""): void {
     const u = this.untitled;
     if (!u) return;
     this.untitled = null;
@@ -191,7 +223,8 @@ export class PageReader {
       inside.toggles = u.toggles.concat([id]);
     } else if (title) {
       const id = `${this.short}/${tag(title)}/${this.occurrence(title)}`;
-      this.entries[u.at] = { kind: "todo", id, title, done: u.done, page: this.pageId, index: u.index, depth: u.depth, toggles: u.toggles };
+      const todo: Entry = { kind: "todo", id, title, done: u.done, page: this.pageId, index: u.index, depth: u.depth, toggles: u.toggles };
+      this.entries[u.at] = link ? { ...todo, link } : todo;
     } else {
       // An empty to-do: not shown, and what is under it sits where it would.
       this.entries.splice(u.at, 1);
@@ -242,7 +275,7 @@ export class PageReader {
         this.add({ kind, id: "", title: "", depth, toggles: c.toggles });
         this.stack.push({ base: depth + 1, toggles: c.toggles, list: [] });
         const rest = inlineText(block[3]);
-        if (rest) this.titled(rest);
+        if (rest) this.titled(rest, linkOf(block[3]));
         return;
       }
     }
@@ -252,7 +285,8 @@ export class PageReader {
       return;
     }
     if (this.untitled) {
-      this.titled(inlineText(line.text()));
+      const text = line.text();
+      this.titled(inlineText(text), linkOf(text));
       return;
     }
 
@@ -276,7 +310,9 @@ export class PageReader {
       if (!title) return;
       const id = `${this.short}/${tag(title)}/${this.occurrence(title)}`;
       this.lastTodo = this.entries.length;
-      this.add({ kind: "todo", id, title, done: todo[1] !== " ", page: this.pageId, index, depth, toggles: c.toggles }, raw);
+      const entry: Entry = { kind: "todo", id, title, done: todo[1] !== " ", page: this.pageId, index, depth, toggles: c.toggles };
+      const link = linkOf(todo[2]);
+      this.add(link ? { ...entry, link } : entry, raw);
       return;
     }
     // Anything else at the left edge ends the lists above it.

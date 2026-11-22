@@ -11,12 +11,24 @@
 
 import type { Json } from "./notion.ts";
 
+/** Where a status option sits: Notion's three groups, in their order. */
+export type Group = "todo" | "progress" | "done";
+
+/** An option of a status or a select: its name, Notion's colour name for it, and its group. */
+export interface Option {
+  readonly name: string;
+  readonly color: string;
+  readonly group: Group;
+}
+
 /** How a database marks a task done. */
 export type DoneField =
   | { readonly kind: "checkbox"; readonly id: string }
   | {
       readonly kind: "status";
       readonly id: string;
+      /** Every option, in the schema's order, with its group. */
+      readonly options: readonly Option[];
       /** Options in the status's Complete group: any of them means done. */
       readonly doneNames: readonly string[];
       /** The option a task is set to when it is closed. */
@@ -25,10 +37,13 @@ export type DoneField =
       readonly openNames: readonly string[];
       /** The option a task goes back to when it is reopened. */
       readonly openTo: string;
+      /** The view shows it as a checkbox: then the row has one, and ticks between closeTo and openTo. */
+      readonly asCheckbox: boolean;
     }
   | {
       readonly kind: "select";
       readonly id: string;
+      readonly options: readonly Option[];
       /** The option that means done. */
       readonly doneName: string;
       /** The option a task goes back to when it is reopened; null leaves it empty. */
@@ -37,15 +52,27 @@ export type DoneField =
 
 export interface Schema {
   readonly titleId: string;
-  readonly done: DoneField;
+  /** Null: nothing marks a row done, and the rows are shown as pages. */
+  readonly done: DoneField | null;
   /** The due date, when the database has a date property. */
   readonly dateId: string | null;
 }
 
-/** A database, resolved once to its data source and the properties that matter. */
+/** What the app takes from a database's view (`GET /v1/views/{id}`): its order and how it shows the status. */
+export interface ViewInfo {
+  /** The view's sorts, as a query takes them; null when it has none (a manual order). */
+  readonly sorts: Json[] | null;
+  /** The property the view groups by. */
+  readonly groupBy: string | null;
+  /** Properties the view shows as a checkbox (`status_show_as`). */
+  readonly checkboxIds: readonly string[];
+}
+
+/** A database, resolved once to its data source, the properties that matter and its view's order. */
 export interface Database {
   readonly dataSourceId: string;
   readonly schema: Schema;
+  readonly sorts: Json[] | null;
 }
 
 /**
@@ -71,6 +98,11 @@ export interface Entry {
   readonly toggles?: readonly string[];
   /** For a toggle: the open tasks inside it, however deep. */
   readonly count?: number;
+  /** For a row of a database with a status or a select: the option it is in, and its colour name. */
+  readonly tag?: string;
+  readonly color?: string;
+  /** For a to-do: the page or database its text links, which OK can open. */
+  readonly link?: string;
 }
 
 /** Which tasks a database list shows. */
@@ -105,19 +137,72 @@ export function plainText(richText: unknown): string {
   return out.replace(/\s+/g, " ").trim().substring(0, MAX_TITLE);
 }
 
+/** A view's sorts and how it shows its properties; anything missing is left out. */
+export function readViewInfo(view: Json): ViewInfo {
+  const config = record(view.configuration);
+  const sorts = Array.isArray(view.sorts) && view.sorts.length > 0 ? (view.sorts as Json[]) : null;
+  const groupBy = str(record(config.group_by).property_id) || null;
+  const checkboxIds: string[] = [];
+  for (const p of list(config.properties)) {
+    const prop = record(p);
+    if (prop.status_show_as === "checkbox" && str(prop.property_id)) checkboxIds.push(str(prop.property_id));
+  }
+  return { sorts, groupBy, checkboxIds };
+}
+
+const GROUPS: readonly Group[] = ["todo", "progress", "done"];
+
+/**
+ * A status's options with their groups. Groups are taken by place, To-do, In
+ * progress, Complete: an old database may keep their names translated.
+ */
+function statusField(id: string, config: Json, asCheckbox: boolean): DoneField | null {
+  const groups = list(config.groups).map(record);
+  const groupOf = (optionId: string): Group => {
+    for (let i = 0; i < groups.length; i += 1) {
+      if (list(groups[i].option_ids).map(str).indexOf(optionId) < 0) continue;
+      if (groups.length >= 3) return GROUPS[Math.min(i, 2)];
+      return i === groups.length - 1 ? "done" : "todo";
+    }
+    return "todo";
+  };
+  const options: Option[] = list(config.options).map(record).map((o) => ({ name: str(o.name), color: str(o.color) || "default", group: groupOf(str(o.id)) }));
+  const doneNames = options.filter((o) => o.group === "done").map((o) => o.name);
+  const openNames = options.filter((o) => o.group !== "done").map((o) => o.name);
+  const fallback = str(config.default_option);
+  const openTo = openNames.indexOf(fallback) >= 0 ? fallback : openNames[0];
+  if (doneNames.length === 0 || !openTo) return null;
+  return { kind: "status", id, options, doneNames, closeTo: doneNames[0], openNames, openTo, asCheckbox };
+}
+
+/** A select with an option named like "Done": that one is done, the first other one to do, the rest in progress. */
+function selectField(id: string, config: Json): DoneField | null {
+  const raw = list(config.options).map(record);
+  const doneName = raw.map((o) => str(o.name)).find((n) => DONE_NAMES.indexOf(n.toLowerCase()) >= 0);
+  if (!doneName) return null;
+  const openTo = raw.map((o) => str(o.name)).find((n) => n !== doneName) ?? null;
+  const options: Option[] = raw.map((o) => {
+    const name = str(o.name);
+    return { name, color: str(o.color) || "default", group: name === doneName ? "done" : name === openTo ? "todo" : "progress" };
+  });
+  return { kind: "select", id, options, doneName, openTo };
+}
+
 /**
  * Picks the title, the done field and the due date from a data source's
- * properties. A checkbox named like "Done" wins, then a status property, then
- * a select with an option named like "Done", then any checkbox. Returns null
- * when nothing can mark a task done.
+ * properties. The property the view groups by or shows as a checkbox wins; then
+ * a checkbox named like "Done", a status, a select with an option named like
+ * "Done", any checkbox. A database with none of them still shows its rows, as
+ * pages. Null only without a title.
  */
-export function readSchema(dataSource: Json): Schema | null {
+export function readSchema(dataSource: Json, view: ViewInfo | null = null): Schema | null {
   const props = record(dataSource.properties);
   let titleId = "";
   let namedCheckbox = "";
   let anyCheckbox = "";
   let status: DoneField | null = null;
   let select: DoneField | null = null;
+  let preferred: DoneField | null = null;
   let dateId: string | null = null;
   let dueDateId: string | null = null;
 
@@ -126,40 +211,45 @@ export function readSchema(dataSource: Json): Schema | null {
     const id = str(prop.id);
     const name = str(prop.name || key).toLowerCase();
     const type = str(prop.type);
+    const chosen = view !== null && (view.groupBy === id || view.checkboxIds.indexOf(id) >= 0);
     if (type === "title") titleId = id;
     if (type === "checkbox") {
       if (!anyCheckbox) anyCheckbox = id;
       if (!namedCheckbox && DONE_NAMES.indexOf(name) >= 0) namedCheckbox = id;
+      if (chosen && !preferred) preferred = { kind: "checkbox", id };
     }
     if (type === "date") {
       if (dateId === null) dateId = id;
       if (dueDateId === null && /due|date|\u0441\u0440\u043e\u043a|\u0434\u0430\u0442\u0430|when|day/.test(name)) dueDateId = id;
     }
-    if (type === "status" && status === null) {
-      const config = record(prop.status);
-      const options = list(config.options).map(record);
-      const groups = list(config.groups).map(record);
-      const complete = groups.find((g) => /complete|done|\u0433\u043e\u0442\u043e\u0432\u043e|\u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e/i.test(str(g.name))) ?? groups[groups.length - 1];
-      const ids = complete ? list(complete.option_ids).map(str) : [];
-      const doneNames = options.filter((o) => ids.indexOf(str(o.id)) >= 0).map((o) => str(o.name));
-      const openNames = options.filter((o) => ids.indexOf(str(o.id)) < 0).map((o) => str(o.name));
-      const fallback = str(config.default_option);
-      const openTo = openNames.indexOf(fallback) >= 0 ? fallback : openNames[0];
-      if (doneNames.length > 0 && openTo) status = { kind: "status", id, doneNames, closeTo: doneNames[0], openNames, openTo };
+    if (type === "status") {
+      const field = statusField(id, record(prop.status), view !== null && view.checkboxIds.indexOf(id) >= 0);
+      if (field && status === null) status = field;
+      if (field && chosen && !preferred) preferred = field;
     }
-    if (type === "select" && select === null) {
-      const names = list(record(prop.select).options).map((o) => str(record(o).name));
-      const doneName = names.find((n) => DONE_NAMES.indexOf(n.toLowerCase()) >= 0);
-      if (doneName) select = { kind: "select", id, doneName, openTo: names.find((n) => n !== doneName) ?? null };
+    if (type === "select") {
+      const field = selectField(id, record(prop.select));
+      if (field && select === null) select = field;
+      if (field && chosen && !preferred) preferred = field;
     }
   }
 
   if (!titleId) return null;
-  const done: DoneField | null = namedCheckbox
+  const done: DoneField | null = preferred ?? (namedCheckbox
     ? { kind: "checkbox", id: namedCheckbox }
-    : status ?? select ?? (anyCheckbox ? { kind: "checkbox", id: anyCheckbox } : null);
-  if (!done) return null;
+    : status ?? select ?? (anyCheckbox ? { kind: "checkbox", id: anyCheckbox } : null));
   return { titleId, done, dateId: dueDateId ?? dateId };
+}
+
+/** The option of a status or select by name. */
+export function optionOf(field: DoneField | null, name: string): Option | null {
+  if (!field || field.kind === "checkbox") return null;
+  return field.options.find((o) => o.name === name) ?? null;
+}
+
+/** A row shows its status as a tag in two lines: a status or a select the view does not show as a checkbox. */
+export function hasTag(field: DoneField | null): boolean {
+  return field !== null && (field.kind === "select" || (field.kind === "status" && !field.asCheckbox));
 }
 
 /** "2026-11-06", by the bar's own clock and time zone. */
@@ -194,25 +284,33 @@ function doneFilters(field: DoneField, done: boolean): Json[] {
  * stands in for it. With the "today" scope a row shows when it is due by today
  * or has no date. A filter nests two levels at most, so each case is its own branch.
  */
-export function queryBody(schema: Schema, scope: Scope, today: string, dayStart: string): Json {
+export function queryBody(schema: Schema, scope: Scope, today: string, dayStart: string, sorts: Json[] | null = null): Json {
   const when: Json[][] = scope === "today" && schema.dateId !== null
     ? [[{ property: schema.dateId, date: { on_or_before: today } }], [{ property: schema.dateId, date: { is_empty: true } }]]
     : [[]];
   const editedToday: Json = { timestamp: "last_edited_time", last_edited_time: { on_or_after: dayStart } };
   const branches: Json[] = [];
-  for (const due of when) branches.push({ and: doneFilters(schema.done, false).concat(due) });
-  for (const due of when) branches.push({ and: doneFilters(schema.done, true).concat(due, [editedToday]) });
+  const field = schema.done;
+  if (field) {
+    for (const due of when) branches.push({ and: doneFilters(field, false).concat(due) });
+    for (const due of when) branches.push({ and: doneFilters(field, true).concat(due, [editedToday]) });
+  } else {
+    // Nothing marks a row done: every row due by today or undated, or every row.
+    for (const due of when) if (due.length > 0) branches.push({ and: due });
+  }
 
-  const body: Json = { filter: { or: branches }, page_size: PAGE_SIZE };
-  body.sorts = schema.dateId !== null
+  const body: Json = { page_size: PAGE_SIZE };
+  if (branches.length > 0) body.filter = { or: branches };
+  // The person's own order, from their view; without one, soonest first.
+  body.sorts = sorts ?? (schema.dateId !== null
     ? [{ property: schema.dateId, direction: "ascending" }, { timestamp: "created_time", direction: "ascending" }]
-    : [{ timestamp: "created_time", direction: "ascending" }];
+    : [{ timestamp: "created_time", direction: "ascending" }]);
   return body;
 }
 
 /** `filter_properties` for the query string: only what the screen needs comes back. */
 export function queryPath(dataSourceId: string, schema: Schema): string {
-  const ids = [schema.titleId, schema.done.id];
+  const ids = schema.done ? [schema.titleId, schema.done.id] : [schema.titleId];
   return `data_sources/${dataSourceId}/query?${ids.map((id) => `filter_properties=${id}`).join("&")}`;
 }
 
@@ -227,18 +325,27 @@ function propertyById(page: Json, id: string): Json {
 
 export function tasksFromQuery(response: Json, schema: Schema): Entry[] {
   const tasks: Entry[] = [];
+  const f = schema.done;
+  const tagged = hasTag(f);
   for (const item of list(response.results)) {
     const page = record(item);
     if (page.object !== "page" || page.in_trash === true) continue;
     const title = plainText(propertyById(page, schema.titleId).title) || "Untitled";
-    const field = propertyById(page, schema.done.id);
-    const f = schema.done;
-    const done = f.kind === "checkbox"
-      ? field.checkbox === true
-      : f.kind === "select"
-        ? str(record(field.select).name) === f.doneName
-        : f.doneNames.indexOf(str(record(field.status).name)) >= 0;
-    tasks.push({ kind: "row", id: str(page.id), title, done });
+    const id = str(page.id);
+    if (!f) {
+      // A row with nothing to tick is a page.
+      tasks.push({ kind: "page", id, title });
+      continue;
+    }
+    const field = propertyById(page, f.id);
+    if (f.kind === "checkbox") {
+      tasks.push({ kind: "row", id, title, done: field.checkbox === true });
+      continue;
+    }
+    const name = str(record(f.kind === "select" ? field.select : field.status).name);
+    const option = optionOf(f, name);
+    const done = option !== null && option.group === "done";
+    tasks.push(tagged ? { kind: "row", id, title, done, tag: name, color: option ? option.color : "default" } : { kind: "row", id, title, done });
   }
   return tasks;
 }
@@ -358,15 +465,22 @@ export function mergeRoots(roots: readonly Entry[], found: readonly Entry[]): En
  * The call that ticks a task off, or back on when `done` is false. A to-do
  * read from markdown needs its block id, found by `source.ts`.
  */
-export function setDoneCall(task: Entry, database: Database | null, done: boolean, blockId = task.id): { path: string; body: Json } | null {
+export function setDoneCall(
+  task: Entry,
+  database: Database | null,
+  done: boolean,
+  blockId = task.id,
+  option: string | null = null,
+): { path: string; body: Json } | null {
   if (task.kind === "todo") return { path: `blocks/${blockId}`, body: { to_do: { checked: done } } };
-  if (task.kind !== "row" || !database) return null;
+  if (task.kind !== "row" || !database || !database.schema.done) return null;
   const field = database.schema.done;
+  // A status or a select chosen by name is written as it is; a tick goes to the done option or back.
   const value = field.kind === "checkbox"
     ? { checkbox: done }
     : field.kind === "select"
-      ? { select: done ? { name: field.doneName } : field.openTo === null ? null : { name: field.openTo } }
-      : { status: { name: done ? field.closeTo : field.openTo } };
+      ? { select: option !== null ? { name: option } : done ? { name: field.doneName } : field.openTo === null ? null : { name: field.openTo } }
+      : { status: { name: option ?? (done ? field.closeTo : field.openTo) } };
   return { path: `pages/${task.id}`, body: { properties: { [field.id]: value } } };
 }
 

@@ -44,8 +44,16 @@ import {
   TEXT_IDLE,
   TEXT_INSET_X,
   TEXT_INSET_Y,
+  PICK_SHIFT,
+  TAG_H,
+  TAG_TEXT_Y,
+  TAG_TITLE_X,
+  TAG_TOP,
+  TAG_X,
+  dim,
   listX,
   printable,
+  tagLook,
   textWidth,
 } from "./layout.ts";
 import type { Entry } from "./tasks.ts";
@@ -63,7 +71,28 @@ const MARKS: Record<string, readonly string[]> = {
   toggleClosed: ["       ", "  #    ", "  ##   ", "  ###  ", "  ##   ", "  #    ", "       "],
   toggleOpen: ["       ", "       ", " ##### ", "  ###  ", "   #   ", "       ", "       "],
   chevron: ["#  ", " # ", "  #", " # ", "#  "],
+  // The title opens: at its left while it is pointed at.
+  go: ["# ", "##", "# "],
+  // Turn the wheel: either side of the tag while a status is chosen.
+  arrowLeft: ["  #", " ##", "###", " ##", "  #"],
+  arrowRight: ["#  ", "## ", "###", "## ", "#  "],
 };
+
+/**
+ * What the focused line is doing: shown in the list, pointed at on its title
+ * or on its mark (checkbox or status), or having its status chosen with
+ * `tag` the option on show.
+ */
+export interface Focus {
+  readonly mode: "list" | "title" | "mark" | "pick";
+  readonly tag?: { readonly name: string; readonly color: string } | null;
+}
+const LIST: Focus = { mode: "list" };
+
+/** A line for a row with a status, in two lines on the whole screen. */
+export const isTagRow = (e: Entry): boolean => e.kind === "row" && e.tag !== undefined;
+/** A task whose title opens something: a database row (a page), or a to-do that links one. */
+export const opens = (e: Entry): boolean => e.kind === "row" || (e.kind === "todo" && !!e.link);
 
 /**
  * Elements by what they are made of; cleared when it grows, which only costs
@@ -96,9 +125,17 @@ function mark(id: string, kind: string, x: number, y: number, color = MARK_COLOR
   return remember(`m|${id}|${x}|${y}|${kind}|${color}`, () => ({ id, type: "xpmbitmap", display: "front", align: "top_left", x, y, data: data(), z_index: 1 }));
 }
 
-function plate(id: string, x: number, y: number, done: boolean): Element {
+/** An XPM with every colour of its palette passed through `f`: the checkbox pointed at, or dimmed. */
+function recolor(data: string, f: (hex: string) => string): string {
+  return data.replace(/ c #([0-9A-Fa-f]{6})/g, (_m, hex: string) => ` c ${f(`#${hex}`)}`);
+}
+
+/** The checkbox pointed at: its grey border white. */
+const BOX_POINTED = recolor(CHECKBOX_XPM.idle, (hex) => (parseInt(hex.substring(1, 3), 16) > 0x50 ? "#FFFFFF" : hex));
+
+function plate(id: string, x: number, y: number, done: boolean, height = PLATE_H, dimmed = false): Element {
   const look = done ? PLATE.done : PLATE.idle;
-  return remember(`p|${id}|${x}|${y}|${done}`, () => ({
+  return remember(`p|${id}|${x}|${y}|${done}|${height}|${dimmed}`, () => ({
     id,
     type: "rectangle",
     display: "front",
@@ -106,14 +143,38 @@ function plate(id: string, x: number, y: number, done: boolean): Element {
     x,
     y,
     width: SCREEN_W - x,
-    height: PLATE_H,
+    height,
     fill: "solid",
-    fill_colors: [look.fill],
+    fill_colors: [dimmed ? dim(look.fill) : look.fill],
     border_width: 1,
-    border_color: look.border,
+    border_color: dimmed ? dim(look.border) : look.border,
     radius: PLATE.radius,
     z_index: 0,
   }) as Element);
+}
+
+/** A status tag: a rectangle in the option's dark colour with its name in the light one. */
+function tag(slot: number, x: number, name: string, color: string, dimmed: boolean): Element[] {
+  const look = tagLook(color);
+  const value = printable(name) || "No status";
+  const width = textWidth(value) + 4;
+  const fill = dimmed ? dim(look.fill) : look.fill;
+  const box = remember(`g|${slot}|${x}|${width}|${fill}`, () => ({
+    id: `tag${slot}`,
+    type: "rectangle",
+    display: "front",
+    align: "top_left",
+    x,
+    y: TAG_TOP,
+    width,
+    height: TAG_H,
+    fill: "solid",
+    fill_colors: [fill],
+    border_width: 0,
+    radius: 1,
+    z_index: 1,
+  }) as Element);
+  return [box, text(`tagtext${slot}`, x + 2, TAG_TEXT_Y, value, dimmed ? dim(look.ink) : look.ink, null)];
 }
 
 /** Settings that make the bar scroll a line inside `width` when it does not fit. */
@@ -192,6 +253,8 @@ export function placeLines(entries: readonly Entry[], selected: number): { offse
   const out: { offset: number; y: number }[] = [];
   const focus = entries[selected];
   if (!focus) return out;
+  // A row with a status fills the screen: nothing else shows around it.
+  if (isTagRow(focus)) return [{ offset: 0, y: 0 }];
   out.push({ offset: 0, y: FOCUS_Y });
   let top = FOCUS_Y + boxOf(focus).inset;
   for (let i = selected - 1; i >= 0 && top - 1 - LINE_GAP >= 0; i -= 1) {
@@ -225,6 +288,7 @@ export function listFrame(
   doneIds: Done,
   logo = false,
   openToggles: ReadonlySet<string> = new Set(),
+  focus: Focus = LIST,
 ): Element[] {
   const isDone = typeof doneIds === "function" ? doneIds : (e: Entry) => doneIds.has(e.id);
   const elements: Element[] = logo ? [icon()] : [];
@@ -232,7 +296,7 @@ export function listFrame(
     const entry = entries[selected + offset];
     const done = hasPlate(entry) && isDone(entry);
     const open = entry.kind === "toggle" && openToggles.has(entry.id);
-    for (const element of lineOf(entry, offset + 1, y, offset === 0, done, open, logo)) elements.push(element);
+    for (const element of lineOf(entry, offset + 1, y, offset === 0, done, open, logo, offset === 0 ? focus : LIST)) elements.push(element);
   }
   return elements;
 }
@@ -244,23 +308,24 @@ export function listFrame(
 const linesMade = new Map<Entry, Map<string, Element[]>>();
 const MAX_LINES = 24;
 
-function lineOf(entry: Entry, slot: number, y: number, focused: boolean, done: boolean, open: boolean, logo: boolean): Element[] {
+function lineOf(entry: Entry, slot: number, y: number, focused: boolean, done: boolean, open: boolean, logo: boolean, focus: Focus): Element[] {
   let made = linesMade.get(entry);
   if (!made) {
     if (linesMade.size >= MAX_LINES) linesMade.clear();
     made = new Map();
     linesMade.set(entry, made);
   }
-  const key = `${slot}|${y}|${focused ? 1 : 0}${done ? 1 : 0}${open ? 1 : 0}${logo ? 1 : 0}`;
+  const shown = focus.tag ? `${focus.tag.name}|${focus.tag.color}` : "";
+  const key = `${slot}|${y}|${focused ? 1 : 0}${done ? 1 : 0}${open ? 1 : 0}${logo ? 1 : 0}|${focus.mode}|${shown}`;
   let line = made.get(key);
   if (!line) {
-    line = buildLine(entry, slot, y, focused, done, open, logo);
+    line = buildLine(entry, slot, y, focused, done, open, logo, focus);
     made.set(key, line);
   }
   return line;
 }
 
-function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done: boolean, open: boolean, logo: boolean): Element[] {
+function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done: boolean, open: boolean, logo: boolean, focus: Focus): Element[] {
   /** The focused line scrolls in its room; the others are cut to it, so they stay clear of a chevron or a count. */
   const line = (id: string, x: number, ly: number, title: string, color: string, room: number) =>
     remember(`l|${id}|${x}|${ly}|${color}|${room}|${focused}|${title}`, () => {
@@ -279,10 +344,37 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
   // The checkbox and every mark are XPM under one id per slot, so a slot that
   // changes kind keeps its element. A plate, a chevron or a count a slot no
   // longer has is moved off screen by main.ts.
-  if (hasPlate(entry)) {
-    out.push(plate(`row${slot}`, x0, y, done));
-    out.push(xpm(`mark${slot}`, markX, markY, done ? CHECKBOX_XPM.done : CHECKBOX_XPM.idle, done ? "done" : "idle"));
-    out.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, done ? TEXT_DONE : TEXT_IDLE, SCREEN_W - textX));
+  const mode = focus.mode;
+  if (isTagRow(entry)) {
+    // Two lines on the whole screen: the title, which opens, and the status under it.
+    const onTitle = mode === "title";
+    const onTag = mode === "mark" || mode === "pick";
+    const titleX = x0 + TAG_TITLE_X;
+    const ink = done ? TEXT_DONE : TEXT_IDLE;
+    out.push(plate(`row${slot}`, x0, y, done, SCREEN_H, mode !== "list"));
+    out.push(line(`text${slot}`, titleX, y, entry.title, onTag ? dim(ink) : ink, CHEVRON_X - 2 - titleX));
+    out.push(mark(`chevron${slot}`, "chevron", CHEVRON_X, y + CHEVRON_INSET_Y, onTag ? dim(MARK_COLOR) : MARK_COLOR));
+    if (onTitle) out.push(mark(`go${slot}`, "go", x0 + 1, y + 3, TEXT_IDLE.substring(0, 7)));
+    const shown = focus.tag ?? { name: entry.tag ?? "", color: entry.color ?? "default" };
+    const tagX = x0 + TAG_X + (mode === "pick" ? PICK_SHIFT : 0);
+    for (const element of tag(slot, tagX, shown.name, shown.color, onTitle)) out.push(element);
+    if (mode === "pick") {
+      const width = textWidth(printable(shown.name) || "No status") + 4;
+      out.push(mark(`arrowl${slot}`, "arrowLeft", tagX - 4, TAG_TOP + 1, "#FFFFFF"));
+      out.push(mark(`arrowr${slot}`, "arrowRight", tagX + width + 1, TAG_TOP + 1, "#FFFFFF"));
+    }
+  } else if (hasPlate(entry)) {
+    const link = opens(entry);
+    const onTitle = mode === "title";
+    const onMark = mode === "mark";
+    const ink = done ? TEXT_DONE : TEXT_IDLE;
+    out.push(plate(`row${slot}`, x0, y, done, PLATE_H, mode !== "list"));
+    const box = done ? CHECKBOX_XPM.done : onMark ? BOX_POINTED : CHECKBOX_XPM.idle;
+    const boxKey = `${done ? "done" : onMark ? "pointed" : "idle"}${onTitle ? "-dim" : ""}`;
+    out.push(xpm(`mark${slot}`, markX, markY, onTitle ? recolor(box, dim) : box, boxKey));
+    out.push(line(`text${slot}`, textX, y + TEXT_INSET_Y, entry.title, onMark ? dim(ink) : ink, (link ? CHEVRON_X - 2 : SCREEN_W) - textX));
+    if (link) out.push(mark(`chevron${slot}`, "chevron", CHEVRON_X, y + CHEVRON_INSET_Y, onMark ? dim(MARK_COLOR) : MARK_COLOR));
+    if (onTitle) out.push(mark(`go${slot}`, "go", textX - 2, y + 3, TEXT_IDLE.substring(0, 7)));
   } else if (entry.kind === "page" || entry.kind === "database") {
     out.push(mark(`mark${slot}`, entry.kind, markX, markY, markColor));
     out.push(mark(`chevron${slot}`, "chevron", CHEVRON_X, y + CHEVRON_INSET_Y, markColor));

@@ -7,6 +7,12 @@
  * OK or Start opens a page or a database, or ticks a task off or back on; Back
  * goes up a level, and on the top level leaves the app.
  *
+ * A task whose title opens something, a database row (a page) or a to-do that
+ * links a page, has two parts: OK points at them, the wheel moves between the
+ * title and the mark, OK on the title opens it and on the mark acts on it. A
+ * row with a status chooses it in place: the wheel goes through the options,
+ * OK writes the one on show, Back keeps the old one.
+ *
  * As in Notion, a ticked task stays where it is, with a burst of confetti. The
  * change goes to Notion a moment later; a second press in that time takes it
  * back without a request. The open view is read again every few seconds, so a
@@ -20,9 +26,9 @@ import { clearAll, drawElements, prepare } from "./display.ts";
 import { focusable, settle, step } from "./focus.ts";
 import { shownEntries } from "./markdown.ts";
 import { NotionError } from "./notion.ts";
-import { type Element, listFrame, messageFrame as message, staleMark } from "./screen.ts";
+import { type Element, type Focus, isTagRow, listFrame, messageFrame as message, opens, staleMark } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
-import { type Database, type Entry, isTask, mergeRoots } from "./tasks.ts";
+import { type Database, type Entry, type Option, isTask, mergeRoots, optionOf } from "./tasks.ts";
 
 /** The name the app draws under; the device clears elements by this id. */
 const APP = manifest.id;
@@ -90,6 +96,8 @@ type Problem = readonly [string, string];
 interface Tick {
   stage: "waiting" | "sending" | "settled";
   readonly done: boolean;
+  /** For a status or a select chosen by name: the option; null for a tick. */
+  readonly option: string | null;
   readonly task: Entry;
   readonly database: Database | null;
   readonly token: string;
@@ -97,7 +105,7 @@ interface Tick {
   tries: number;
   at: number;
   /** Pressed again while `sending`: the state to send once this one is through. */
-  then: boolean | null;
+  then: { done: boolean; option: string | null } | null;
 }
 
 function viewKey(view: View): string {
@@ -123,7 +131,7 @@ function count(entries: readonly Entry[]): string {
  */
 function explain(err: unknown, failures: number): { problem: Problem; retryMs: number; drop: boolean } {
   const backOff = Math.min(RETRY_MS * Math.pow(2, failures), MAX_RETRY_MS);
-  if (err instanceof NoDoneFieldError) return { problem: ["No checkbox", "or status in this database"], retryMs: MAX_RETRY_MS, drop: true };
+  if (err instanceof NoDoneFieldError) return { problem: ["Can't read", "this database"], retryMs: MAX_RETRY_MS, drop: true };
   if (err instanceof MovedError) return { problem: ["Page changed", "try again"], retryMs: 0, drop: false };
   if (err instanceof NotionError) {
     if (err.status === 401) return { problem: ["Bad token", "check the settings"], retryMs: MAX_RETRY_MS, drop: true };
@@ -201,8 +209,50 @@ function main(): void {
   const isDone = (e: Entry): boolean => {
     const t = ticks.get(e.id);
     if (!t || t.stage === "settled") return e.done === true;
-    return t.then ?? t.done;
+    return t.then ? t.then.done : t.done;
   };
+
+  /** The options of the open database's status or select, in the schema's order. */
+  const options = (): readonly Option[] => {
+    const field = database?.schema.done ?? null;
+    return field && field.kind !== "checkbox" ? field.options : [];
+  };
+
+  /** The option a row shows: the one on its way, else what Notion said. */
+  const tagOf = (e: Entry): { name: string; color: string } => {
+    const t = ticks.get(e.id);
+    const name = t && t.stage !== "settled" ? (t.then ? t.then.option : t.option) : null;
+    if (name === null) return { name: e.tag ?? "", color: e.color ?? "default" };
+    return { name, color: optionOf(database?.schema.done ?? null, name)?.color ?? "default" };
+  };
+
+  /**
+   * The focused task pointed at, its title or its mark; or its status being
+   * chosen, `index` the option on show. Both are for the line with `id`, and
+   * end when the focus leaves it.
+   */
+  let pointing: { id: string; target: "title" | "mark" } | null = null;
+  let picking: { id: string; index: number } | null = null;
+
+  /** How the focused line is drawn. */
+  const focusOf = (e: Entry | undefined): Focus => {
+    if (!e || e.kind !== "row" || !isTagRow(e)) {
+      return pointing && e && pointing.id === e.id ? { mode: pointing.target } : { mode: "list" };
+    }
+    if (picking && picking.id === e.id) {
+      const o = options()[picking.index];
+      return { mode: "pick", tag: o ? { name: o.name, color: o.color } : tagOf(e) };
+    }
+    const tag = tagOf(e);
+    const shownTag = tag.name === (e.tag ?? "") ? null : tag;
+    return pointing && pointing.id === e.id ? { mode: pointing.target, tag: shownTag } : { mode: "list", tag: shownTag };
+  };
+
+  /** Pointing and choosing end once the focused line is another. */
+  function dropPointing(): void {
+    pointing = null;
+    picking = null;
+  }
 
   const report = (where: string, err: unknown) =>
     console.error(`${APP}: ${where}: ${err instanceof Error ? err.message : String(err)}`);
@@ -284,7 +334,7 @@ function main(): void {
     const state = shownState();
     if (!state.any) return messageFrame(title, "no tasks or pages");
     // Ticks are looked up for the lines on screen only, not the whole list.
-    const list = listFrame(state.lines, selected, (e: Entry) => isTask(e) && isDone(e), logo, openHere());
+    const list = listFrame(state.lines, selected, (e: Entry) => isTask(e) && isDone(e), logo, openHere(), focusOf(state.lines[selected]));
     if (stale) list.push(staleMark(logo));
     return list;
   }
@@ -398,6 +448,7 @@ function main(): void {
 
   /** Puts a view on screen from memory when it is there; it is read again either way. */
   function enter(view: View): void {
+    dropPointing();
     const level = remembered.get(viewKey(view));
     entries = level ? level.entries : [];
     database = level ? level.database : null;
@@ -479,7 +530,9 @@ function main(): void {
       const now = Date.now();
       const fresh = result.entries.map((e) => {
         const t = ticks.get(e.id);
-        return t && t.stage === "settled" && startedAt < t.at + SETTLED_GRACE_MS && t.done !== e.done ? { ...e, done: t.done } : e;
+        if (!t || t.stage !== "settled" || startedAt >= t.at + SETTLED_GRACE_MS) return e;
+        if (t.option !== null && t.option !== e.tag) return withState(e, t);
+        return t.done !== e.done ? { ...e, done: t.done } : e;
       });
       ticks.forEach((t, id) => {
         if (t.stage === "settled" && startedAt >= t.at + SETTLED_GRACE_MS) ticks.delete(id);
@@ -496,6 +549,7 @@ function main(): void {
       entries = fresh;
       database = result.database;
       selectById(keepId);
+      if ((pointing || picking) && focused() !== (pointing ?? picking)?.id) dropPointing();
       loaded = true;
       stale = false;
       problem = null;
@@ -546,14 +600,21 @@ function main(): void {
 
   // ---- Ticking tasks ------------------------------------------------------
 
-  function newTick(task: Entry, db: Database | null, token: string, done: boolean): Tick {
-    return { stage: "waiting", done, task, database: db, token, timer: undefined, tries: 0, at: Date.now(), then: null };
+  function newTick(task: Entry, db: Database | null, token: string, done: boolean, option: string | null = null): Tick {
+    return { stage: "waiting", done, option, task, database: db, token, timer: undefined, tries: 0, at: Date.now(), then: null };
+  }
+
+  /** A task with the state a tick gave it: done, and for a status its option and colour. */
+  function withState(e: Entry, t: Tick): Entry {
+    if (t.option === null) return { ...e, done: t.done };
+    const color = optionOf(t.database?.schema.done ?? null, t.option)?.color ?? "default";
+    return { ...e, done: t.done, tag: t.option, color };
   }
 
   /** Sets a task's state in a list, if the list has it. */
-  function withDone(list: Entry[], id: string, done: boolean): Entry[] | null {
-    if (!list.some((t) => t.id === id)) return null;
-    return list.map((t) => (t.id === id ? { ...t, done } : t));
+  function withDone(list: Entry[], id: string, t: Tick): Entry[] | null {
+    if (!list.some((e) => e.id === id)) return null;
+    return list.map((e) => (e.id === id ? withState(e, t) : e));
   }
 
   /** The tick is final now: send it. The task stays where it is either way. */
@@ -567,24 +628,24 @@ function main(): void {
 
   function attempt(id: string, t: Tick): void {
     t.timer = undefined;
-    setDone(t.token, t.task, t.database, t.done)
+    setDone(t.token, t.task, t.database, t.done, t.option)
       .then(() => {
         if (ticks.get(id) !== t) return;
         t.stage = "settled";
         t.at = Date.now();
-        const next = withDone(entries, id, t.done);
+        const next = withDone(entries, id, t);
         if (next) {
           entries = next;
           keep(current(), { entries, database, focus: focused() });
           persist();
         }
         remembered.forEach((level, k) => {
-          const list = withDone(level.entries, id, t.done);
+          const list = withDone(level.entries, id, t);
           if (list) remembered.set(k, { ...level, entries: list });
         });
         // Pressed again meanwhile: that goes out now, without the wait.
-        if (t.then !== null && t.then !== t.done && !stopped) {
-          const again = newTick(t.task, t.database, t.token, t.then);
+        if (t.then !== null && (t.then.done !== t.done || t.then.option !== t.option) && !stopped) {
+          const again = newTick(t.task, t.database, t.token, t.then.done, t.then.option);
           ticks.set(id, again);
           send(id);
         }
@@ -658,6 +719,49 @@ function main(): void {
 
   // ---- Input ---------------------------------------------------------------
 
+  /** Opens a view from the list: a subpage, a database, a row's page or a to-do's link. */
+  function go(view: View, title: string): void {
+    flushPending();
+    keep(current(), { entries, database, focus: focused() });
+    stack.push(view);
+    enter(current());
+    showBanner(title, null, BANNER_MS);
+  }
+
+  /** Ticks a task off or back on: after UNDO_MS, and a second press in that time takes it back. */
+  function toggleDone(entry: Entry, token: string): void {
+    const t = ticks.get(entry.id);
+    const done = !isDone(entry);
+    if (t && t.stage === "sending") {
+      // Sent already: the press is kept and goes out once the request is through.
+      t.then = { done, option: null };
+    } else if (t && t.stage === "waiting") {
+      if (t.timer !== undefined) clearTimeout(t.timer);
+      ticks.delete(entry.id);
+    } else {
+      const id = entry.id;
+      const next = newTick(entry, database, token, done);
+      next.timer = setTimeout(guarded("tick", () => send(id)), UNDO_MS);
+      ticks.set(id, next);
+    }
+    if (done && !(t && t.stage === "waiting")) celebrate();
+  }
+
+  /** Writes the status on show: chosen on purpose, so it goes at once, without the wait for a second press. */
+  function choose(entry: Entry, token: string, option: Option): void {
+    if (option.name === tagOf(entry).name) return;
+    const done = option.group === "done";
+    const t = ticks.get(entry.id);
+    if (done && !isDone(entry)) celebrate();
+    if (t && t.stage === "sending") {
+      t.then = { done, option: option.name };
+      return;
+    }
+    if (t && t.timer !== undefined) clearTimeout(t.timer);
+    ticks.set(entry.id, newTick(entry, database, token, done, option.name));
+    send(entry.id);
+  }
+
   function activate(): void {
     // A press while a title or a note is up only takes it away.
     if (banner) {
@@ -669,6 +773,32 @@ function main(): void {
     if (!loaded || !token) return;
     const entry = shown()[selected];
     if (!entry || !focusable(entry)) return;
+    if (picking && picking.id === entry.id) {
+      const option = options()[picking.index];
+      dropPointing();
+      if (option) choose(entry, token, option);
+      redraw();
+      return;
+    }
+    if (pointing && pointing.id === entry.id) {
+      const target = pointing.target;
+      if (target === "title") {
+        dropPointing();
+        if (entry.kind === "row") go({ kind: "page", id: entry.id, title: entry.title }, entry.title);
+        else if (entry.link) go({ kind: "start", id: entry.link }, entry.title);
+        return;
+      }
+      if (isTagRow(entry)) {
+        // The status is chosen in place, starting from the one it has.
+        const at = options().findIndex((o) => o.name === tagOf(entry).name);
+        picking = { id: entry.id, index: Math.max(0, at) };
+      } else {
+        dropPointing();
+        toggleDone(entry, token);
+      }
+      redraw();
+      return;
+    }
     if (entry.kind === "toggle") {
       // Opens or closes in place: what is inside shows under it, one level deeper.
       const open = openHere();
@@ -678,32 +808,31 @@ function main(): void {
       return;
     }
     if (entry.kind === "page" || entry.kind === "database") {
-      flushPending();
-      keep(current(), { entries, database, focus: focused() });
-      stack.push({ kind: entry.kind, id: entry.id, title: entry.title });
-      enter(current());
-      showBanner(entry.title, null, BANNER_MS);
+      go({ kind: entry.kind, id: entry.id, title: entry.title }, entry.title);
       return;
     }
-    const t = ticks.get(entry.id);
-    const done = !isDone(entry);
-    if (t && t.stage === "sending") {
-      // Sent already: the press is kept and goes out once the request is through.
-      t.then = done;
-    } else if (t && t.stage === "waiting") {
-      if (t.timer !== undefined) clearTimeout(t.timer);
-      ticks.delete(entry.id);
-    } else {
-      const id = entry.id;
-      const tick = newTick(entry, database, token, done);
-      tick.timer = setTimeout(guarded("tick", () => send(id)), UNDO_MS);
-      ticks.set(id, tick);
+    if (opens(entry)) {
+      // Two parts: point at them first. A row with a status starts on its title, a to-do on its checkbox.
+      pointing = { id: entry.id, target: isTagRow(entry) ? "title" : "mark" };
+      redraw();
+      return;
     }
-    if (done && !(t && t.stage === "waiting")) celebrate();
+    toggleDone(entry, token);
     redraw();
   }
 
   function up(): void {
+    // Back steps out of choosing, then out of pointing, then up a level.
+    if (picking) {
+      picking = null;
+      redraw();
+      return;
+    }
+    if (pointing) {
+      pointing = null;
+      redraw();
+      return;
+    }
     if (stack.length <= 1) {
       quit();
       return;
@@ -719,6 +848,22 @@ function main(): void {
   function move(delta: number): void {
     if (!loaded || entries.length === 0) return;
     if (banner) dropBanner();
+    if (picking) {
+      // The wheel goes round the options.
+      const n = options().length;
+      if (n > 0) picking = { id: picking.id, index: (((picking.index + delta) % n) + n) % n };
+      redraw();
+      return;
+    }
+    if (pointing) {
+      // The wheel moves between the two parts: title above the tag, checkbox left of the title.
+      const entry = shown()[selected];
+      const order: ("title" | "mark")[] = entry && isTagRow(entry) ? ["title", "mark"] : ["mark", "title"];
+      const at = order.indexOf(pointing.target) + (delta > 0 ? 1 : -1);
+      pointing = { id: pointing.id, target: order[Math.max(0, Math.min(1, at))] };
+      redraw();
+      return;
+    }
     // Headings are passed over.
     selected = step(shown(), selected, delta);
     redraw();

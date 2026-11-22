@@ -45,13 +45,26 @@ Either of these works.
 | Control | What it does |
 | --- | --- |
 | Wheel | Moves through the entries, passing over headings. The focused one sits in the middle of the screen. |
-| **OK** or **Start** | Opens a page or a database. Opens or closes a toggle in place. On a task, ticks it off or back on. |
-| **Back** | Goes up a level. On the top level, leaves the app. |
+| **OK** or **Start** | Opens a page or a database. Opens or closes a toggle in place. On a to-do, ticks it off or back on. On a task whose title opens (below), points at it. |
+| **Back** | Steps out of choosing a status, then out of pointing, then up a level. On the top level, leaves the app. |
+
+A task whose title opens something has two parts. A database row's title always opens: every row is a
+page and may hold its own to-dos, and the bar does not read it before you open it. A to-do's title opens
+when its text mentions or links a Notion page. Such a task has a chevron › at the right. The first
+**OK** points at it: everything else dims, the wheel moves between the title and the mark (the checkbox
+or the status), **OK** on the title opens it and on the mark acts on it. A to-do without a link ticks at
+once.
+
+A row of a database with a status (or a select) fills the screen: its title above, its status below as
+a tag in the option's colour. **OK** on the tag chooses the status in place: arrows appear on both sides,
+the wheel goes through the database's options, **OK** writes the one on show, **Back** keeps the old one.
+A status the database's view shows as a checkbox stays a checkbox.
 
 | Entry | Looks like |
 | --- | --- |
 | Open task | A plate, an empty checkbox, white text |
 | Ticked task | A highlighted plate, a blue checkbox, faded text |
+| Row with a status | The whole screen: the title above, a tag with the status below, a chevron › on the right |
 | Page | No plate; a sheet on the left, a chevron › on the right |
 | Database | No plate; a grid on the left, a chevron › on the right |
 | Toggle | No plate; ▸ closed, ▾ open, the number of open tasks inside on the right. Toggles start closed. |
@@ -78,17 +91,20 @@ needs no waiting, even after a restart.
 
 ### Databases
 
-A database shows its open rows that are due today or earlier or have no date, soonest first, then the
-rows ticked off today, so a task closed by mistake can be reopened. The app finds the properties by itself:
+A database shows its open rows that are due today or earlier or have no date, then the rows done
+today, so a task closed by mistake can be reopened. They come in the order of the database's first view,
+as you sorted it in Notion; a view without a sort (dragged by hand) and a database Notion gives no view
+for come soonest first, open rows before done ones. The app finds the properties by itself:
 
-- **Done**: a checkbox named like *Done*, *Complete* or *Finished* (or its Russian equivalent); else a
-  status property, where any option in its *Complete* group means done; else a select with an option
-  named like *Done*; else any checkbox. A database with several data sources uses the first one that
-  has one of these.
+- **Status**: the property the first view groups by or shows as a checkbox; else a checkbox named like
+  *Done*, *Complete* or *Finished* (or its Russian equivalent); else a status property, where any option
+  in its third group (*Complete*) means done; else a select with an option named like *Done*; else any
+  checkbox. A database with several data sources uses the view's own, else the first that has one of
+  these. A database with none of them shows its rows as pages.
 - **Due date**: a date property named like *Due* or *Date*; else the first date property. A database
   without one shows all open rows.
 
-Unticking a status row sets it back to the status's default option, a select row to its first option
+Unticking a status shown as a checkbox sets it back to the status's default option, a select row to its first option
 that is not done. Notion has no "closed at" date,
 so "ticked off today" means a done row edited since midnight by the bar's clock.
 
@@ -111,7 +127,7 @@ Changes apply within a few seconds, without restarting the app.
 | `Bad token` | Notion does not accept the token: it was mistyped, revoked or has expired. |
 | `No pages` | The token sees nothing. An internal connection needs pages shared with it. |
 | `No access` | The page or database is not shared with the token, or it was deleted. |
-| `No checkbox` | The database has no checkbox or status property to tick. |
+| `Can't read` | None of the database's data sources has a title property. |
 | `Offline` | Notion could not be reached. The app keeps trying, waiting longer each time. |
 | `Notion busy` | Too many requests: the app waits as long as Notion asks. |
 | `Notion down` | Notion answers with a server error. The app keeps trying. |

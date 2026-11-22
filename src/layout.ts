@@ -95,6 +95,57 @@ export const MARK_EDGE = "#5F5E58";
 export const CHEVRON_X = SCREEN_W - 4;
 export const CHEVRON_INSET_Y = 2;
 
+/**
+ * A row with a status takes the whole screen in two lines: the title at
+ * TAG_TITLE_X on the top line, the status as a tag on the bottom one (Figma,
+ * "Вариант I"). The tag is a rectangle 7 px tall with the option's name 2 px in.
+ */
+export const TAG_TITLE_X = 4;
+export const TAG_X = 3;
+export const TAG_TOP = 8;
+export const TAG_H = 7;
+export const TAG_TEXT_Y = 7;
+/** While a status is chosen the tag moves right, to leave room for the arrow on its left. */
+export const PICK_SHIFT = 4;
+
+/** Notion's colour names, as the bar shows them. */
+const NOTION_COLORS: Record<string, string> = {
+  default: "8C8B85", gray: "8C8B85", brown: "A47148", orange: "E0832E", yellow: "D9A63A",
+  green: "3FA66B", blue: "2B85DF", purple: "9A6DD7", pink: "D15796", red: "E5534B",
+};
+
+function channels(hex: string): number[] {
+  return [0, 2, 4].map((i) => parseInt(hex.substring(i, i + 2), 16));
+}
+
+function hexOf(rgb: number[]): string {
+  return rgb.map((v) => {
+    const h = Math.round(Math.max(0, Math.min(255, v))).toString(16).toUpperCase();
+    return h.length < 2 ? `0${h}` : h;
+  }).join("");
+}
+
+/** A tag's fill and its text: the colour darkened under, lightened on top, as Notion's tags are. */
+export function tagLook(color: string): { fill: string; ink: string } {
+  const rgb = channels(NOTION_COLORS[color] ?? NOTION_COLORS.default);
+  return { fill: `#${hexOf(rgb.map((v) => v * 0.32))}FF`, ink: `#${hexOf(rgb.map((v) => v * 0.8 + 255 * 0.2))}FF` };
+}
+
+/**
+ * Hover and choosing dim everything but what is pointed at to 40%. A colour
+ * with alpha keeps its RGB and loses alpha; an opaque one is darkened, as it
+ * would look over black.
+ */
+export const DIM = 0.4;
+export function dim(color: string): string {
+  const hex = color.replace("#", "");
+  if (hex.length === 8) {
+    const a = Math.round(parseInt(hex.substring(6, 8), 16) * DIM);
+    return `#${hex.substring(0, 6)}${hexOf([a, 0, 0]).substring(0, 2)}`;
+  }
+  return `#${hexOf(channels(hex).map((v) => v * DIM))}`;
+}
+
 /** The dot that marks a list Notion could not confirm on the last read. */
 export const STALE_COLOR = "#FF8A3DFF";
 

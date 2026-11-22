@@ -14,6 +14,7 @@ import {
   queryBody,
   queryPath,
   readSchema,
+  readViewInfo,
   byTitle,
   openFirst,
   pickRoots,
@@ -23,7 +24,7 @@ import {
   walkedBlocks,
 } from "./tasks.ts";
 
-/** The database has nothing that marks a task done: no checkbox, status or done-like select. */
+/** None of the database's data sources could be read as a list: no title property. */
 export class NoDoneFieldError extends Error {}
 
 /** The read was given up because the user left the view. */
@@ -76,17 +77,51 @@ function list(value: unknown): Json[] {
   return Array.isArray(value) ? (value as Json[]) : [];
 }
 
-/** The database's first data source that has a done field. */
+/**
+ * The database's first view, for its order and how it shows its status
+ * (`GET /v1/views`, from 19.03.2026). Null when Notion gives none: the database
+ * is then shown in the app's own order.
+ */
+async function firstView(token: string, id: string, alive: Alive): Promise<Json | null> {
+  try {
+    check(alive);
+    const views = await call(token, "GET", `views?database_id=${id}`);
+    const first = list(views.results)[0];
+    const viewId = first && typeof first.id === "string" ? first.id : "";
+    if (!viewId) return null;
+    check(alive);
+    return await call(token, "GET", `views/${viewId}`);
+  } catch (err) {
+    if (err instanceof NotionError && err.status !== 401 && err.status !== 429 && err.status < 500) return null;
+    throw err;
+  }
+}
+
+/**
+ * The database's data source with a done field, the view's own first; else the
+ * first that has a title, whose rows are then shown as pages.
+ */
 async function openDatabase(token: string, id: string, alive: Alive): Promise<{ database: Database; title: string }> {
   check(alive);
   const db = await call(token, "GET", `databases/${id}`);
-  for (const source of list(db.data_sources).slice(0, MAX_SOURCES)) {
-    if (typeof source.id !== "string") continue;
+  const view = await firstView(token, id, alive);
+  const info = view ? readViewInfo(view) : null;
+  const viewSource = view && typeof view.data_source_id === "string" ? view.data_source_id : "";
+  const sources = list(db.data_sources).filter((s) => typeof s.id === "string").slice(0, MAX_SOURCES);
+  sources.sort((a, b) => (a.id === viewSource ? -1 : b.id === viewSource ? 1 : 0));
+  let fallback: Database | null = null;
+  for (const source of sources) {
+    const sourceId = source.id as string;
+    const own = !viewSource || sourceId === viewSource;
     check(alive);
-    const schema = readSchema(await call(token, "GET", `data_sources/${source.id}`));
-    if (schema) return { database: { dataSourceId: source.id, schema }, title: plainText(db.title) };
+    const schema = readSchema(await call(token, "GET", `data_sources/${sourceId}`), own ? info : null);
+    if (!schema) continue;
+    const database: Database = { dataSourceId: sourceId, schema, sorts: own && info ? info.sorts : null };
+    if (schema.done) return { database, title: plainText(db.title) };
+    if (!fallback) fallback = database;
   }
-  throw new NoDoneFieldError("no checkbox, status or done select");
+  if (fallback) return { database: fallback, title: plainText(db.title) };
+  throw new NoDoneFieldError("no data source with a title");
 }
 
 /**
@@ -205,7 +240,7 @@ export async function readView(
     databases.set(resolved.id, database);
   }
   check(alive);
-  const body = queryBody(database.schema, scope, localDate(now), localDayStart(now));
+  const body = queryBody(database.schema, scope, localDate(now), localDayStart(now), database.sorts);
   let response: Json;
   try {
     response = await call(token, "POST", queryPath(database.dataSourceId, database.schema), body);
@@ -214,7 +249,9 @@ export async function readView(
     if (err instanceof NotionError && (err.status === 400 || err.status === 404)) databases.delete(resolved.id);
     throw err;
   }
-  return { entries: openFirst(tasksFromQuery(response, database.schema)), view: resolved, database };
+  // The person's own sort is kept as it is; the app's own puts open rows first.
+  const rows = tasksFromQuery(response, database.schema);
+  return { entries: database.sorts ? rows : openFirst(rows), view: resolved, database };
 }
 
 // ---- Finding a to-do's block ----------------------------------------------
@@ -295,11 +332,11 @@ async function tickByLine(token: string, task: Entry, done: boolean): Promise<bo
   }
 }
 
-/** Ticks a task off in Notion, or back on. */
-export async function setDone(token: string, task: Entry, database: Database | null, done: boolean): Promise<void> {
+/** Ticks a task off in Notion, or back on; `option` sets a status or a select by name instead. */
+export async function setDone(token: string, task: Entry, database: Database | null, done: boolean, option: string | null = null): Promise<void> {
   if (task.kind === "todo" && task.page && task.line && (await tickByLine(token, task, done))) return;
   const blockId = task.kind === "todo" && task.page ? await todoBlock(token, task) : task.id;
-  const update = setDoneCall(task, database, done, blockId);
+  const update = setDoneCall(task, database, done, blockId, option);
   if (!update) throw new Error("not a task");
   await call(token, "PATCH", update.path, update.body);
 }

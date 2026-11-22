@@ -169,3 +169,51 @@ test("a title the font cannot draw at all shows as Untitled", () => {
   const els = byId(listFrame([todo("a", "\ud83d\ude00\ud83d\ude80")], 0, new Set()));
   assert.equal(els.text1.text, "Untitled");
 });
+
+const row = (id: string, title: string, tag: string, color: string): Entry => ({ kind: "row", id, title, done: false, tag, color });
+
+test("a row with a status fills the screen: title above, its status as a tag below", () => {
+  const rows = [row("a", "Ship", "Todo", "gray"), row("b", "Call the bank", "Doing", "blue"), row("c", "Rest", "Todo", "gray")];
+  assert.deepEqual(placeLines(rows, 1), [{ offset: 0, y: 0 }]);
+  const els = byId(listFrame(rows, 1, new Set()));
+  assert.equal(els.row1.height, 16);
+  assert.equal(els.text1.x, 4);
+  assert.equal(els.text1.text, "Call the bank");
+  assert.equal(els.chevron1.type, "xpmbitmap");
+  assert.equal(els.tagtext1.text, "Doing");
+  assert.equal(els.tag1.x, 3);
+  assert.equal(els.tag1.y, 8);
+  assert.equal(els.row0, undefined);
+  assert.equal(els.row2, undefined);
+});
+
+test("pointing dims all but its part; choosing moves the tag between two arrows", () => {
+  const rows = [row("b", "Call", "Doing", "blue")];
+  const list = byId(listFrame(rows, 0, new Set()));
+  const title = byId(listFrame(rows, 0, new Set(), false, new Set(), { mode: "title" }));
+  assert.ok(title.go1);
+  assert.equal(title.text1.color, list.text1.color);
+  assert.notEqual(title.tag1.fill_colors[0], list.tag1.fill_colors[0]);
+  const mark = byId(listFrame(rows, 0, new Set(), false, new Set(), { mode: "mark" }));
+  assert.equal(mark.go1, undefined);
+  assert.equal(mark.text1.color, "#FFFFFF66");
+  assert.equal(mark.tag1.fill_colors[0], list.tag1.fill_colors[0]);
+  const pick = byId(listFrame(rows, 0, new Set(), false, new Set(), { mode: "pick", tag: { name: "Done", color: "green" } }));
+  assert.equal(pick.tagtext1.text, "Done");
+  assert.equal(pick.tag1.x, 7);
+  assert.equal(pick.arrowl1.x, 3);
+  assert.ok(pick.arrowr1);
+});
+
+test("a to-do that links a page has a chevron and two parts; one that does not has neither", () => {
+  const linked: Entry = { kind: "todo", id: "a", title: "Brief", link: "x" };
+  const els = byId(listFrame([linked], 0, new Set()));
+  assert.ok(els.chevron1);
+  assert.equal(byId(listFrame([todo("b", "Plain")], 0, new Set())).chevron1, undefined);
+  const onBox = byId(listFrame([linked], 0, new Set(), false, new Set(), { mode: "mark" }));
+  assert.match(String(onBox.mark1.data), /#FFFFFF/);
+  assert.equal(onBox.text1.color, "#FFFFFF66");
+  const onTitle = byId(listFrame([linked], 0, new Set(), false, new Set(), { mode: "title" }));
+  assert.ok(onTitle.go1);
+  assert.equal(onTitle.text1.color, "#FFFFFFFF");
+});

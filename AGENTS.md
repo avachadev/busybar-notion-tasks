@@ -21,7 +21,12 @@ off. What it does, its settings and its files: [README.md](README.md).
   - a page is read as markdown (`GET /pages/{id}/markdown?markdown_version=v2`): one request, nested
     to-dos included, no block ids;
   - a to-do with a unique line is ticked with `PATCH /pages/{id}/markdown` (`update_content`), which
-    keeps the block; otherwise its block id is found by walking the page's blocks once (`source.ts`).
+    keeps the block; otherwise its block id is found by walking the page's blocks once (`source.ts`);
+  - a database's first view (`GET /v1/views?database_id=`, then `GET /v1/views/{id}`) gives its sorts
+    and how it shows the status; any 4xx but 401 and 429 there means no view, and the app's own order.
+- Keys: the app gets the wheel, OK, Start and Back (firmware docs, appendix 3); there are no left and
+  right keys. A database row's title always opens and nothing under it is read before it is opened
+  (`docs/databases.md`).
 - Back:
   - only `short` reaches the app; `long` never does;
   - Back does not clear the app's elements, so `show()` moves what left the frame off screen.
@@ -47,6 +52,8 @@ off. What it does, its settings and its files: [README.md](README.md).
     lines are decoded, ASCII natively; a regular expression run over a line costs about 0.3-3 ms;
   - a page with 120 subpages still takes several seconds to read: its first screen shows after 8
     lines (`FIRST_SCREEN`), and a slow view is read again no sooner than 3 times its read time.
+- Saved place: `cache.ts` stores under `place2`; bump the key whenever an entry or a database changes
+  shape, or an old place is read into new code.
 - Settings:
   - the app reads them only through `GET /api/apps/settings` and cannot write them;
   - `"sensitive": true` hides the token in local web, but the API still serves it;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { MAX_ENTRIES, entriesFromMarkdown, inlineText, sameText, shownEntries } from "../src/markdown.ts";
+import { MAX_ENTRIES, entriesFromMarkdown, inlineText, linkOf, sameText, shownEntries } from "../src/markdown.ts";
 
 /** What Notion's markdown (version 2) returns for a page with to-dos in every kind of container. */
 const PAGE = [
@@ -203,4 +203,19 @@ test("inline text and matching it with a block's text", () => {
   assert.ok(sameText("Task with bold and link", "Task with bold, and link!"));
   assert.ok(sameText("Due 2026-11-21 report", "Due November 21, 2026 report") === false);
   assert.ok(!sameText("Buy milk", "Buy bread"));
+});
+
+const HEX = "ac540d75c21cf6f6f9595cd70675efdf";
+const ID = "ac540d75-c21c-f6f6-f959-5cd70675efdf";
+
+test("a to-do that mentions or links a Notion page can open it; a link off Notion cannot", () => {
+  assert.equal(linkOf(`Call <mention url="https://app.notion.com/p/${HEX}">Bob</mention>`), ID);
+  assert.equal(linkOf(`See [the brief](https://www.notion.so/Brief-${HEX}?pvs=4)`), ID);
+  assert.equal(linkOf(`Read [this](https://example.com/${HEX})`), "");
+  assert.equal(linkOf(`Meet <mention url="user://${HEX}">Ann</mention>`), "");
+  assert.equal(linkOf("<mention-date start=\"2026-11-22\"/> plain"), "");
+  const [linked, plain] = entriesFromMarkdown("p", `- [ ] Prepare <mention url="https://app.notion.com/p/${HEX}">Brief</mention>\n- [ ] Plain`);
+  assert.equal(linked.title, "Prepare Brief");
+  assert.equal(linked.link, ID);
+  assert.equal(plain.link, undefined);
 });

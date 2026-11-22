@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { foundInSearch, mergeRoots, rootsInSearch, pickRoots, localDate, localDayStart, openFirst, plainText, queryBody, queryPath, readSchema, setDoneCall, tasksFromQuery } from "../src/tasks.ts";
+import { foundInSearch, hasTag, mergeRoots, rootsInSearch, pickRoots, localDate, localDayStart, openFirst, plainText, queryBody, queryPath, readSchema, readViewInfo, setDoneCall, tasksFromQuery } from "../src/tasks.ts";
 
 const rt = (s: string) => [{ type: "text", plain_text: s }];
 
@@ -26,15 +26,16 @@ const statusDb = {
       status: {
         default_option: "\u041d\u0435 \u043d\u0430\u0447\u0430\u0442\u043e",
         options: [
-          { id: "o1", name: "\u041d\u0435 \u043d\u0430\u0447\u0430\u0442\u043e" },
-          { id: "o2", name: "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435" },
-          { id: "o3", name: "\u0413\u043e\u0442\u043e\u0432\u043e" },
-          { id: "o4", name: "\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u043e" },
+          { id: "o1", name: "\u041d\u0435 \u043d\u0430\u0447\u0430\u0442\u043e", color: "default" },
+          { id: "o2", name: "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435", color: "blue" },
+          { id: "o3", name: "\u0413\u043e\u0442\u043e\u0432\u043e", color: "green" },
+          { id: "o4", name: "\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u043e", color: "red" },
         ],
+        // Group names as an old Russian workspace keeps them: groups are told by their place.
         groups: [
-          { id: "g1", name: "To-do", option_ids: ["o1"] },
-          { id: "g2", name: "In progress", option_ids: ["o2"] },
-          { id: "g3", name: "Complete", option_ids: ["o3", "o4"] },
+          { id: "g1", name: "\u041a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044e", option_ids: ["o1"] },
+          { id: "g2", name: "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435", option_ids: ["o2"] },
+          { id: "g3", name: "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e", option_ids: ["o3", "o4"] },
         ],
       },
     },
@@ -51,17 +52,71 @@ test("a status uses its Complete group", () => {
     done: {
       kind: "status",
       id: "st",
+      options: [
+        { name: "\u041d\u0435 \u043d\u0430\u0447\u0430\u0442\u043e", color: "default", group: "todo" },
+        { name: "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435", color: "blue", group: "progress" },
+        { name: "\u0413\u043e\u0442\u043e\u0432\u043e", color: "green", group: "done" },
+        { name: "\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u043e", color: "red", group: "done" },
+      ],
       doneNames: ["\u0413\u043e\u0442\u043e\u0432\u043e", "\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u043e"],
       closeTo: "\u0413\u043e\u0442\u043e\u0432\u043e",
       openNames: ["\u041d\u0435 \u043d\u0430\u0447\u0430\u0442\u043e", "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435"],
       openTo: "\u041d\u0435 \u043d\u0430\u0447\u0430\u0442\u043e",
+      asCheckbox: false,
     },
     dateId: null,
   });
 });
 
-test("nothing to tick means no schema", () => {
-  assert.equal(readSchema({ properties: { Name: { id: "title", type: "title" } } }), null);
+test("a database with nothing to tick shows its rows as pages, in every row", () => {
+  const schema = readSchema({ properties: { Name: { id: "title", type: "title" } } })!;
+  assert.deepEqual(schema, { titleId: "title", done: null, dateId: null });
+  assert.equal(readSchema({ properties: {} }), null);
+  const body = queryBody(schema, "today", "2026-11-06", START);
+  assert.equal(body.filter, undefined);
+  assert.equal(queryPath("ds", schema), "data_sources/ds/query?filter_properties=title");
+  const rows = tasksFromQuery({ results: [{ object: "page", id: "p", properties: { Name: { id: "title", title: rt("Notes") } } }] }, schema);
+  assert.deepEqual(rows, [{ kind: "page", id: "p", title: "Notes" }]);
+});
+
+test("a status row carries its option and colour; one shown as a checkbox does not", () => {
+  const schema = readSchema(statusDb)!;
+  assert.equal(hasTag(schema.done), true);
+  const page = (name: string) => ({ object: "page", id: "p", properties: { T: { id: "title", title: rt("A") }, S: { id: "st", status: { name } } } });
+  const [doing] = tasksFromQuery({ results: [page("\u0412 \u0440\u0430\u0431\u043e\u0442\u0435")] }, schema);
+  assert.deepEqual(doing, { kind: "row", id: "p", title: "A", done: false, tag: "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435", color: "blue" });
+  const [cancelled] = tasksFromQuery({ results: [page("\u041e\u0442\u043c\u0435\u043d\u0435\u043d\u043e")] }, schema);
+  assert.equal(cancelled.done, true);
+
+  const asBox = readSchema(statusDb, { sorts: null, groupBy: null, checkboxIds: ["st"] })!;
+  assert.equal(hasTag(asBox.done), false);
+  assert.deepEqual(tasksFromQuery({ results: [page("\u0413\u043e\u0442\u043e\u0432\u043e")] }, asBox), [{ kind: "row", id: "p", title: "A", done: true }]);
+});
+
+test("a status is written by the option chosen", () => {
+  const db = { dataSourceId: "ds", schema: readSchema(statusDb)!, sorts: null };
+  const row = { kind: "row" as const, id: "p1", title: "" };
+  assert.deepEqual(setDoneCall(row, db, false, "p1", "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435")?.body, {
+    properties: { st: { status: { name: "\u0412 \u0440\u0430\u0431\u043e\u0442\u0435" } } },
+  });
+});
+
+test("the view's grouping picks the field and its sorts the order", () => {
+  const db = {
+    properties: {
+      Name: { id: "title", name: "Name", type: "title", title: {} },
+      Done: { id: "dn", name: "Done", type: "checkbox", checkbox: {} },
+      Stage: { id: "sg", name: "Stage", type: "select", select: { options: [{ name: "Todo", color: "gray" }, { name: "Done", color: "green" }] } },
+    },
+  };
+  assert.equal(readSchema(db)!.done!.kind, "checkbox");
+  const sorts = [{ property: "Name", direction: "descending" }];
+  const info = readViewInfo({ sorts, configuration: { group_by: { property_id: "sg" }, properties: [] } });
+  assert.deepEqual(info, { sorts, groupBy: "sg", checkboxIds: [] });
+  const schema = readSchema(db, info)!;
+  assert.equal(schema.done!.kind, "select");
+  assert.deepEqual(queryBody(schema, "all", "2026-11-06", START, info.sorts).sorts, sorts);
+  assert.deepEqual(readViewInfo({ sorts: [], configuration: {} }), { sorts: null, groupBy: null, checkboxIds: [] });
 });
 
 const START = "2026-11-06T00:00:00+03:00";
@@ -174,7 +229,17 @@ const selectDb = {
 
 test("a select with a Done option marks tasks done", () => {
   const schema = readSchema(selectDb)!;
-  assert.deepEqual(schema.done, { kind: "select", id: "sg", doneName: "Done", openTo: "Todo" });
+  assert.deepEqual(schema.done, {
+    kind: "select",
+    id: "sg",
+    options: [
+      { name: "Todo", color: "default", group: "todo" },
+      { name: "Doing", color: "default", group: "progress" },
+      { name: "Done", color: "default", group: "done" },
+    ],
+    doneName: "Done",
+    openTo: "Todo",
+  });
   const body = queryBody(schema, "all", "2026-11-06", START) as { filter: { or: { and: unknown[] }[] } };
   assert.deepEqual(body.filter.or[0].and, [{ property: "sg", select: { does_not_equal: "Done" } }]);
   assert.deepEqual(body.filter.or[1].and[0], { property: "sg", select: { equals: "Done" } });
@@ -185,7 +250,7 @@ test("a select with a Done option marks tasks done", () => {
     ],
   }, schema);
   assert.deepEqual(rows.map((r) => r.done), [true, false]);
-  const db = { dataSourceId: "ds", schema };
+  const db = { dataSourceId: "ds", schema, sorts: null };
   const row = { kind: "row" as const, id: "a", title: "" };
   assert.deepEqual(setDoneCall(row, db, true)?.body, { properties: { sg: { select: { name: "Done" } } } });
   assert.deepEqual(setDoneCall(row, db, false)?.body, { properties: { sg: { select: { name: "Todo" } } } });
@@ -196,7 +261,7 @@ test("long titles are capped", () => {
 });
 
 test("ticking a task off and back on", () => {
-  const db = { dataSourceId: "ds", schema: readSchema(statusDb)! };
+  const db = { dataSourceId: "ds", schema: readSchema(statusDb)!, sorts: null };
   const row = { kind: "row" as const, id: "p1", title: "" };
   assert.deepEqual(setDoneCall(row, db, true), { path: "pages/p1", body: { properties: { st: { status: { name: "\u0413\u043e\u0442\u043e\u0432\u043e" } } } } });
   assert.deepEqual(setDoneCall(row, db, false), { path: "pages/p1", body: { properties: { st: { status: { name: "\u041d\u0435 \u043d\u0430\u0447\u0430\u0442\u043e" } } } } });
