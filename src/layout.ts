@@ -170,15 +170,21 @@ export function dim(color: string): string {
  * line under the title says what the view holds.
  */
 export const TOP_TITLE_Y = -1;
-export const TOP_MARK_Y = 0;
 export const SPINNER = "animations/spinner_front_8x8.anim";
 export const SPINNER_Y = 1;
 export const LOAD_DIM = "animations/load_dim.anim";
 export const LOAD_DIM_Y = 0;
 export const LOAD_BARS = "animations/load_bars.anim";
 export const LOAD_BARS_Y = 8;
-/** The line under the title on the preview: its letters on rows 8..12, where the first bar was. */
-export const TOP_DETAIL_Y = 6;
+/**
+ * The preview of a view read before stands where a row with a status stands,
+ * which is what it is most often opened from: the title's letters on rows
+ * 2..6, the line under it where the status's tag text is (rows 9..13), the mark
+ * centred on the title as in the list. Nothing jumps when the row opens.
+ */
+export const PREVIEW_TITLE_Y = 0;
+export const PREVIEW_MARK_Y = 1;
+export const PREVIEW_DETAIL_Y = TAG_TEXT_Y;
 
 /** The dot that marks a list Notion could not confirm on the last read. */
 export const STALE_COLOR = "#FF8A3DFF";

@@ -47,8 +47,9 @@ import {
   LOAD_DIM_Y,
   SPINNER,
   SPINNER_Y,
-  TOP_DETAIL_Y,
-  TOP_MARK_Y,
+  PREVIEW_DETAIL_Y,
+  PREVIEW_MARK_Y,
+  PREVIEW_TITLE_Y,
   TOP_TITLE_Y,
   SCREEN_H,
   SCREEN_W,
@@ -466,9 +467,9 @@ function animation(id: string, x: number, y: number, file: string, stock: boolea
 }
 
 /** The title on the top line, from the list's text x; it scrolls in the room left to it. */
-function topTitle(title: string, logo: boolean): Element {
+function topTitle(title: string, logo: boolean, y: number): Element {
   const x = listX(logo) + TEXT_INSET_X;
-  return text("toptitle", x, TOP_TITLE_Y, printable(title) || "Untitled", TEXT_IDLE, SCREEN_W - 1 - x);
+  return text("toptitle", x, y, printable(title) || "Untitled", TEXT_IDLE, SCREEN_W - 1 - x);
 }
 
 /**
@@ -483,24 +484,24 @@ export function loadingFrame(title: string, logo = false): Element[] {
   const textX = x0 + TEXT_INSET_X;
   const out: Element[] = logo ? [icon()] : [];
   out.push(animation("loadspin", x0 + CHECKBOX_INSET_X, SPINNER_Y, SPINNER, true, 4));
-  out.push(topTitle(title, logo));
+  out.push(topTitle(title, logo, TOP_TITLE_Y));
   out.push(animation("loaddim", textX, LOAD_DIM_Y, LOAD_DIM, false, 3));
   out.push(animation("loadbars", textX, LOAD_BARS_Y, LOAD_BARS, false, 1));
   return out;
 }
 
 /**
- * A view just opened that was read before: for a moment, its title as on the
- * loading screen, its mark where the spinner was, and under it, in grey, what
- * it holds. Then the list.
+ * A view just opened that was read before: for a moment, its mark, its title
+ * and under it, in grey, what it holds, on the lines of a row with a status,
+ * so opening one does not move the text. Then the list.
  */
 export function previewFrame(title: string, detail: string, kind: "page" | "database", logo = false): Element[] {
   const x0 = listX(logo);
   const textX = x0 + TEXT_INSET_X;
   const out: Element[] = logo ? [icon()] : [];
-  out.push(mark("topmark", kind, x0 + CHECKBOX_INSET_X, TOP_MARK_Y));
-  out.push(topTitle(title, logo));
-  out.push(text("topdetail", textX, TOP_DETAIL_Y, printable(detail), TEXT_EDGE, SCREEN_W - 1 - textX));
+  out.push(mark("topmark", kind, x0 + CHECKBOX_INSET_X, PREVIEW_MARK_Y));
+  out.push(topTitle(title, logo, PREVIEW_TITLE_Y));
+  out.push(text("topdetail", textX, PREVIEW_DETAIL_Y, printable(detail), TEXT_EDGE, SCREEN_W - 1 - textX));
   return out;
 }
 

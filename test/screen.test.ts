@@ -259,9 +259,12 @@ test("a view read for the first time: the firmware's spinner where the mark goes
 test("a view read before: its mark where the spinner was, its title, and what it holds under it in grey", () => {
   const els = byId(previewFrame("Projects", "3 pages, 2 tasks", "database"));
   assert.equal(els.topmark.type, "xpmbitmap");
-  assert.deepEqual([els.topmark.x, els.topmark.y], [1, 0]);
-  assert.deepEqual([els.toptitle.x, els.toptitle.y], [10, -1]);
-  assert.deepEqual([els.topdetail.x, els.topdetail.y, els.topdetail.text, els.topdetail.color], [10, 6, "3 pages, 2 tasks", "#FFFFFF66"]);
+  // On the lines of a row with a status: title anchored at 0, the line under it where the tag's text is.
+  const row = byId(listFrame([{ kind: "row", id: "r", title: "Projects", done: false, tag: "Doing", color: "blue" }], 0, new Set()));
+  assert.equal(els.toptitle.y, row.text1.y);
+  assert.equal(els.topdetail.y, row.tagtext1.y);
+  assert.deepEqual([els.topmark.x, els.topmark.y], [1, 1]);
+  assert.deepEqual([els.toptitle.x, els.topdetail.x, els.topdetail.text, els.topdetail.color], [10, 10, "3 pages, 2 tasks", "#FFFFFF66"]);
   assert.equal(els.loadspin, undefined);
   assert.equal(els.loadbars, undefined);
 });
