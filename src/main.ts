@@ -75,8 +75,8 @@ const CONFETTI_PATHS = [
   "animations/confetti_streamers.anim",
 ];
 const CONFETTI_MS = 1500;
-/** Views kept in memory for going back without waiting. */
-const MAX_REMEMBERED = 12;
+/** Views kept in memory for going back without waiting: each holds up to MAX_ENTRIES lines of the 256 KiB heap. */
+const MAX_REMEMBERED = 4;
 
 type Problem = readonly [string, string];
 

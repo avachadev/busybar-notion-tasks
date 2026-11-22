@@ -32,7 +32,8 @@ test("a page is one markdown request", async () => {
   const calls: string[] = [];
   globalThis.fetch = (async (url: string) => {
     calls.push(String(url));
-    return { ok: true, status: 200, json: async () => ({ markdown: "- [ ] A\n  - [x] B" }) } as unknown as Response;
+    const body = JSON.stringify({ object: "page_markdown", markdown: "- [ ] A\n  - [x] B" });
+    return { ok: true, status: 200, json: async () => JSON.parse(body), text: async () => body } as unknown as Response;
   }) as typeof fetch;
   const loaded = await readView("t", { kind: "page", id: "p", title: "" }, "today", new Date(), new Map(), () => true);
   assert.equal(calls.length, 1);

@@ -164,3 +164,8 @@ test("the same inputs give back the same element, so a frame is compared without
   assert.notEqual(ticked.row1, byId(first).row1);
   assert.equal(ticked.text2, byId(first).text2);
 });
+
+test("a title the font cannot draw at all shows as Untitled", () => {
+  const els = byId(listFrame([todo("a", "\ud83d\ude00\ud83d\ude80")], 0, new Set()));
+  assert.equal(els.text1.text, "Untitled");
+});

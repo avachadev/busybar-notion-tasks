@@ -1,7 +1,8 @@
 /** Reads what one screen of the app shows, and closes tasks. */
 
-import { entriesFromMarkdown, sameText } from "./markdown.ts";
-import { type Json, NotionError, call } from "./notion.ts";
+import { PageReader, sameText } from "./markdown.ts";
+import { type Json, NotionError, call, stream } from "./notion.ts";
+import { MarkdownLines } from "./stream.ts";
 import {
   type Database,
   type Entry,
@@ -62,8 +63,8 @@ const DATABASES_PER_SEARCH = 10;
 const MAX_DATABASE_SEARCHES = 3;
 /** A database's data sources tried for one with a done field. */
 const MAX_SOURCES = 3;
-/** Blocks per request when looking for a to-do's id. */
-const WALK_PAGE_SIZE = 100;
+/** Blocks per request when looking for a to-do's id: an answer of 100 blocks can run to 50 KB. */
+const WALK_PAGE_SIZE = 25;
 
 function list(value: unknown): Json[] {
   return Array.isArray(value) ? (value as Json[]) : [];
@@ -82,10 +83,20 @@ async function openDatabase(token: string, id: string, alive: Alive): Promise<{ 
   throw new NoDoneFieldError("no checkbox, status or done select");
 }
 
+/**
+ * A page, read as its markdown arrives (`stream.ts`): the answer is never held
+ * whole, and reading stops once MAX_ENTRIES lines are kept.
+ */
 async function readPage(token: string, id: string, alive: Alive): Promise<Entry[]> {
   check(alive);
-  const response = await call(token, "GET", `pages/${id}/markdown?markdown_version=v2`);
-  return entriesFromMarkdown(id, typeof response.markdown === "string" ? response.markdown : "");
+  const reader = new PageReader(id);
+  const lines = new MarkdownLines((line) => {
+    reader.push(line);
+    return !reader.full;
+  });
+  await stream(token, `pages/${id}/markdown?markdown_version=v2`, (bytes) => lines.feed(bytes));
+  lines.end();
+  return reader.finish();
 }
 
 /**

@@ -264,7 +264,8 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
   /** The focused line scrolls in its room; the others are cut to it, so they stay clear of a chevron or a count. */
   const line = (id: string, x: number, ly: number, title: string, color: string, room: number) =>
     remember(`l|${id}|${x}|${ly}|${color}|${room}|${focused}|${title}`, () => {
-      const value = printable(title);
+      // A title of emoji alone has nothing the font can draw.
+      const value = printable(title) || "Untitled";
       return text(id, x, ly, focused ? value : fit(value, room), color, focused ? room : null);
     });
   const out: Element[] = [];

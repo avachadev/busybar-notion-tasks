@@ -112,14 +112,73 @@ export async function call(
   onWire = turn.catch(() => undefined);
   const answer = await withTimeout(turn, timeoutMs);
 
-  const json = answer.json ?? {};
-  if (!answer.ok) {
-    const code = typeof json.code === "string" ? json.code : "";
-    const message = typeof json.message === "string" ? json.message : `HTTP ${answer.status}`;
-    const extra = json.additional_data as { retry_after?: unknown } | undefined;
-    const seconds = typeof extra?.retry_after === "number" ? extra.retry_after : answer.retryAfter;
-    throw new NotionError(answer.status, code, message, seconds > 0 ? seconds * 1000 : 0);
-  }
+  if (!answer.ok) throw failure(answer);
   if (answer.json === null) throw new Error("unreadable response");
-  return json;
+  return answer.json;
+}
+
+function failure(answer: Answer): NotionError {
+  const json = answer.json ?? {};
+  const code = typeof json.code === "string" ? json.code : "";
+  const message = typeof json.message === "string" ? json.message : `HTTP ${answer.status}`;
+  const extra = json.additional_data as { retry_after?: unknown } | undefined;
+  const seconds = typeof extra?.retry_after === "number" ? extra.retry_after : answer.retryAfter;
+  return new NotionError(answer.status, code, message, seconds > 0 ? seconds * 1000 : 0);
+}
+
+interface Reader {
+  read(): Promise<{ done: boolean; value?: Uint8Array }>;
+  cancel?(): Promise<void>;
+}
+
+/**
+ * A GET whose answer is handed on chunk by chunk as it arrives, never held
+ * whole; `onChunk` says whether more is wanted, and once it does not the rest
+ * is let go. Takes its turn on the wire as `call` does.
+ */
+export async function stream(token: string, path: string, onChunk: (bytes: Uint8Array) => boolean, timeoutMs = TIMEOUT_MS): Promise<void> {
+  let wanted = true;
+  const init: RequestInit = { method: "GET", headers: { Authorization: `Bearer ${token}`, "Notion-Version": NOTION_VERSION } };
+  const take = (bytes: Uint8Array) => (wanted = wanted && onChunk(bytes));
+  const work = async (): Promise<NotionError | null> => {
+    const response = await fetch(API_BASE + path, init);
+    if (!response.ok) {
+      let json: Json | null = null;
+      try {
+        json = (await response.json()) as Json;
+      } catch {
+        // An error page that is not JSON: the status says enough.
+      }
+      return failure({ ok: false, status: response.status, json, retryAfter: Number(header(response, "retry-after") || NaN) });
+    }
+    const body = response.body as unknown as { getReader?: () => Reader } | null;
+    if (body && typeof body.getReader === "function") {
+      const reader = body.getReader();
+      for (;;) {
+        const part = await reader.read();
+        if (part.done || !part.value) break;
+        if (!take(part.value)) {
+          try {
+            if (reader.cancel) await reader.cancel();
+          } catch {
+            // Nothing more to read either way.
+          }
+          break;
+        }
+      }
+    } else {
+      // A runtime without streams: the answer in one piece.
+      take(new TextEncoder().encode(await response.text()));
+    }
+    return null;
+  };
+  const turn = onWire.then(work);
+  onWire = turn.catch(() => undefined);
+  try {
+    const error = await withTimeout(turn, timeoutMs);
+    if (error) throw error;
+  } finally {
+    // Given up or done: whatever still arrives is not handed on.
+    wanted = false;
+  }
 }

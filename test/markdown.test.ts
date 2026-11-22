@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { entriesFromMarkdown, inlineText, sameText, shownEntries } from "../src/markdown.ts";
+import { MAX_ENTRIES, entriesFromMarkdown, inlineText, sameText, shownEntries } from "../src/markdown.ts";
 
 /** What Notion's markdown (version 2) returns for a page with to-dos in every kind of container. */
 const PAGE = [
@@ -124,8 +124,8 @@ test("a to-do written as a tag, as Notion does for one with children inside a to
   assert.deepEqual(entriesFromMarkdown("P", md).map((e) => [e.kind, e.title, e.depth, e.index ?? null, e.line ?? null]), [
     ["toggle", "Things", 0, null, null],
     ["todo", "Big task", 1, 0, null],
-    ["todo", "Small task", 2, 1, "- [ ] Small task"],
-    ["todo", "Under an empty one", 1, 3, "- [ ] Under an empty one"],
+    ["todo", "Small task", 2, 1, "- [ ] Small task\n"],
+    ["todo", "Under an empty one", 1, 3, "- [ ] Under an empty one\n"],
     ["todo", "After", 0, 4, "- [ ] After"],
   ]);
 });
@@ -156,13 +156,29 @@ test("nested to-dos get a level each; an empty one is hidden and adds none", () 
   ]);
 });
 
-test("only a to-do whose line no other line contains can be ticked by its line", () => {
+test("a to-do whose text is the only one of its kind is ticked by its line, ending with its line break", () => {
   const byTitle = (md: string) => Object.fromEntries(entriesFromMarkdown("P", md).map((e) => [e.title, e.line ?? null]));
+  // The line break keeps "Buy milk" from being found inside "Buy milk and eggs"; the same text twice is never ticked by line.
   assert.deepEqual(byTitle("- [ ] Buy milk\n- [ ] Buy milk and eggs\n- [x] Call\n  - [ ] Call"), {
-    "Buy milk": null,
-    "Buy milk and eggs": "- [ ] Buy milk and eggs",
+    "Buy milk": "- [ ] Buy milk\n",
+    "Buy milk and eggs": "- [ ] Buy milk and eggs\n",
     Call: null,
   });
+  // The page's last line has no line break: it keeps its line only if no other to-do's text begins with it.
+  assert.deepEqual(byTitle("- [ ] Buy milk and eggs\n- [ ] Buy milk"), { "Buy milk and eggs": "- [ ] Buy milk and eggs\n", "Buy milk": null });
+  assert.deepEqual(byTitle("- [ ] A\n- [ ] B"), { A: "- [ ] A\n", B: "- [ ] B" });
+});
+
+test("a page is read up to MAX_ENTRIES lines, and says there is more", () => {
+  const md = Array.from({ length: 400 }, (_, i) => `- [ ] Task ${i}`).join("\n");
+  const entries = entriesFromMarkdown("P", md);
+  assert.equal(entries.length, MAX_ENTRIES + 1);
+  assert.equal(entries[entries.length - 1].title, "More in Notion");
+  assert.equal(entries[entries.length - 1].kind, "heading");
+});
+
+test("escaped characters in a title are text, not tags or entities", () => {
+  assert.equal(inlineText("\\<b>not a tag\\</b> \\&amp; [x](u)"), "<b>not a tag</b> &amp; x");
 });
 
 test("to-dos with the same text get ids of their own that do not move with the others", () => {
