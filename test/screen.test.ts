@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { printable, textWidth } from "../src/layout.ts";
-import { fit, listFrame, messageFrame, placeLines, scrollbar } from "../src/screen.ts";
+import { fit, listFrame, loadingFrame, messageFrame, placeLines, scrollbar } from "../src/screen.ts";
 import type { Entry } from "../src/tasks.ts";
 
 const todo = (id: string, title: string): Entry => ({ kind: "todo", id, title });
@@ -234,4 +234,23 @@ test("the scrollbar is the firmware's: 1 px on the right, the thumb moving from 
   // In the frame too, and the list ends at x 70.
   const frame = byId(listFrame(lines, 3, new Set()));
   assert.ok(frame.scrollthumb);
+});
+
+test("a view read for the first time shows its title on top, the firmware's spinner at its right and a shimmering skeleton under them", () => {
+  const els = byId(loadingFrame("Projects", "database"));
+  assert.equal(els.loadmark.x, 1);
+  assert.equal(els.loadtitle.x, 10);
+  assert.equal(els.loadtitle.y, 0);
+  assert.equal(els.loadspin.type, "animation");
+  assert.equal(els.loadspin.stock_path, "animations/spinner_front_8x8.anim");
+  assert.equal(els.loadspin.x, 63);
+  assert.equal(els.loadspin.loop, true);
+  assert.equal(els.loadskel.path, "animations/skeleton.anim");
+  assert.equal(els.loadskel.y, 9);
+  // The top level has no mark; with the logo everything starts right of it.
+  const top = byId(loadingFrame("Notion", null, true));
+  assert.equal(top.loadmark, undefined);
+  assert.equal(top.loadtitle.x, 11);
+  assert.equal(top.loadskel.x, 10);
+  assert.ok(top.icon);
 });

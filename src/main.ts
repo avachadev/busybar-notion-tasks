@@ -27,7 +27,7 @@ import { focusable, settle, step } from "./focus.ts";
 import { shownEntries } from "./markdown.ts";
 import { NotionError, wireIdle } from "./notion.ts";
 import { Roots } from "./roots.ts";
-import { type Element, type Focus, isTagRow, listFrame, messageFrame as message, opens, staleMark } from "./screen.ts";
+import { type Element, type Focus, isTagRow, listFrame, loadingFrame, messageFrame as message, opens, staleMark } from "./screen.ts";
 import { MovedError, NoDoneFieldError, type View, readRecentRoots, readView, setDone } from "./source.ts";
 import { type Database, type Entry, type Option, isTask, mergeRoots, optionOf } from "./tasks.ts";
 
@@ -117,7 +117,12 @@ function viewKey(view: View): string {
 }
 
 function viewTitle(view: View): string {
-  return view.kind === "page" || view.kind === "database" ? view.title : "";
+  return view.kind === "page" || view.kind === "database" ? view.title : view.kind === "start" ? (view.title ?? "") : "";
+}
+
+/** The mark a view's title has on the loading screen: the one its line had in the list. */
+function viewMark(view: View): "page" | "database" | null {
+  return view.kind === "database" ? "database" : view.kind === "page" || view.kind === "start" ? "page" : null;
 }
 
 function count(entries: readonly Entry[]): string {
@@ -312,7 +317,9 @@ function main(): void {
     }
     for (const id of inView) {
       if (ids[id]) continue;
-      changed.push({ ...onScreen[id], y: OFF_SCREEN_Y } as Element);
+      // An animation off screen is stopped too: a looping one would go on costing the bar its frames.
+      const gone = onScreen[id] as Element & { type: string };
+      changed.push((gone.type === "animation" ? { ...gone, y: OFF_SCREEN_Y, loop: false } : { ...gone, y: OFF_SCREEN_Y }) as Element);
     }
     try {
       if (changed.length > 0) await drawElements(APP, changed);
@@ -335,13 +342,13 @@ function main(): void {
     const view = current();
     const title = viewTitle(view) || "Notion";
     if (banner) return messageFrame(banner.title, banner.detail ?? (loaded ? count(entries) : "loading"));
-    if (!loaded) return problem ? messageFrame(problem[0], problem[1]) : messageFrame(title, "loading");
+    if (!loaded) return problem ? messageFrame(problem[0], problem[1]) : loadingFrame(title, viewMark(view), logo);
     if (entries.length === 0) {
       if (view.kind === "database") {
         return config.scope === "today" ? messageFrame("All done", "for today") : messageFrame("All done", "no open tasks");
       }
       // The first sweep is still under way: the top level fills in as it goes.
-      if (view.kind === "root" && roots && roots.searching) return messageFrame("Notion", "looking for pages");
+      if (view.kind === "root" && roots && roots.searching) return loadingFrame("Notion", null, logo);
       // An internal connection sees only pages shared with it: ••• > Connections in Notion.
       if (view.kind === "root") return messageFrame("No pages", "share pages with the connection");
       return messageFrame(title, "no tasks or pages");
@@ -802,7 +809,9 @@ function main(): void {
     keep(current(), { entries, database, focus: focused() });
     stack.push(view);
     enter(current());
-    showBanner(title, null, BANNER_MS);
+    // Remembered: its name for a moment, then the list. Not yet: the loading screen, which has its name.
+    if (loaded) showBanner(title, null, BANNER_MS);
+    else redraw();
   }
 
   /** Ticks a task off or back on: after UNDO_MS, and a second press in that time takes it back. */
@@ -862,7 +871,7 @@ function main(): void {
       if (target === "title") {
         dropPointing();
         if (entry.kind === "row") go({ kind: "page", id: entry.id, title: entry.title }, entry.title);
-        else if (entry.link) go({ kind: "start", id: entry.link }, entry.title);
+        else if (entry.link) go({ kind: "start", id: entry.link, title: entry.title }, entry.title);
         return;
       }
       if (isTagRow(entry)) {

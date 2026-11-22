@@ -41,6 +41,10 @@ import {
   SCROLL_THUMB,
   SCROLL_TRACK,
   SCROLL_X,
+  SKELETON,
+  SKELETON_Y,
+  SPINNER,
+  SPINNER_X,
   SCREEN_H,
   SCREEN_W,
   STALE_COLOR,
@@ -446,6 +450,28 @@ function buildLine(entry: Entry, slot: number, y: number, focused: boolean, done
     // A heading is never focused: grey, as any line without a plate away from the focus.
     out.push(line(`text${slot}`, x0 + 1, y + TEXT_INSET_Y, entry.title, TEXT_EDGE, LIST_RIGHT - x0 - 1));
   }
+  return out;
+}
+
+/**
+ * Shown while a view is read for the first time, so it is plain the bar has not
+ * hung: the title moved to the top line, with its mark, the firmware's spinner
+ * at the right, and a skeleton of a line under them with a shimmer. Both are
+ * animations the bar plays itself: no request per frame.
+ */
+export function loadingFrame(title: string, kind: "page" | "database" | null, logo = false): Element[] {
+  const x0 = listX(logo);
+  const textX = kind ? x0 + TEXT_INSET_X : x0 + 1;
+  const value = printable(title) || "Untitled";
+  const out: Element[] = logo ? [icon()] : [];
+  if (kind) out.push(mark("loadmark", kind, x0 + CHECKBOX_INSET_X, CHECKBOX_INSET_Y));
+  out.push(text("loadtitle", textX, 0, value, TEXT_IDLE, SPINNER_X - 2 - textX));
+  out.push(remember("loadspin", () => ({
+    id: "loadspin", type: "animation", display: "front", align: "top_left", x: SPINNER_X, y: 0, stock_path: SPINNER, loop: true, z_index: 2,
+  }) as unknown as Element));
+  out.push(remember(`loadskel|${x0}`, () => ({
+    id: "loadskel", type: "animation", display: "front", align: "top_left", x: x0, y: SKELETON_Y, path: SKELETON, loop: true, z_index: 1,
+  }) as unknown as Element));
   return out;
 }
 

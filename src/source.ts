@@ -54,7 +54,7 @@ const writing: Turn = { priority: WRITE };
  */
 export type View =
   | { readonly kind: "root" }
-  | { readonly kind: "start"; readonly id: string }
+  | { readonly kind: "start"; readonly id: string; readonly title?: string }
   | { readonly kind: "page"; readonly id: string; readonly title: string }
   | { readonly kind: "database"; readonly id: string; readonly title: string };
 
@@ -231,7 +231,7 @@ export async function readView(
       resolved = { kind: "database", id: view.id, title: opened.title };
     } catch (err) {
       if (!(err instanceof NotionError) || (err.status !== 400 && err.status !== 404)) throw err;
-      resolved = { kind: "page", id: view.id, title: "" };
+      resolved = { kind: "page", id: view.id, title: view.title ?? "" };
     }
   }
 

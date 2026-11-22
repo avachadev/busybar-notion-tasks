@@ -158,6 +158,17 @@ export function dim(color: string): string {
   return `#${hexOf(channels(hex).map((v) => v * DIM))}`;
 }
 
+/**
+ * While a view is read for the first time: its title on the top line, the
+ * firmware's own spinner (8x8, `stock_path`) at its right, 1 px in from the
+ * edge, and under them the skeleton of a line with its shimmer, an animation
+ * the bar plays by itself (`tools/skeleton.py`).
+ */
+export const SPINNER = "animations/spinner_front_8x8.anim";
+export const SPINNER_X = SCREEN_W - 9;
+export const SKELETON = "animations/skeleton.anim";
+export const SKELETON_Y = 9;
+
 /** The dot that marks a list Notion could not confirm on the last read. */
 export const STALE_COLOR = "#FF8A3DFF";
 
