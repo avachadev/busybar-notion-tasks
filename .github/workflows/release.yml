@@ -69,9 +69,11 @@ jobs:
               gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
             fi
           else
+            # Latest by date, not by number: releases/latest/download serves the newest build even after a lower version number.
             gh release create "$GITHUB_REF_NAME" \
               "dist/${{ steps.manifest.outputs.archive }}" \
               --title "$GITHUB_REF_NAME" \
               --notes-file "$RUNNER_TEMP/details.md" \
-              --generate-notes
+              --generate-notes \
+              --latest
           fi
