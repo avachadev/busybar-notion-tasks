@@ -132,6 +132,9 @@ Unticking a status shown as a checkbox sets it back to the status's default opti
 that is not done. Notion has no "closed at" date,
 so "ticked off today" means a done row edited since midnight by the bar's clock.
 
+"Today" is the day in the time zone set on the bar, not in UTC: a bar left
+on UTC changes days at UTC midnight.
+
 ## Settings
 
 | Setting | What it does |
@@ -252,7 +255,7 @@ Over Wi-Fi add `-- --addr <bar-ip>` (and `--password <password>` if the bar has 
 | `test/` | Unit tests, run with Node's built-in test runner. |
 
 Releases are built by GitHub Actions: push a tag equal to the version in `src/appmeta/manifest.json`
-(e.g. `1.0.0`) and the workflow attaches `app.avachadev.notiontasks.tgz` to the release.
+(e.g. `1.0.2`) and the workflow attaches `app.avachadev.notiontasks.tgz` to the release.
 
 ## License
 

@@ -17,6 +17,7 @@ off. What it does, its settings and its files: [README.md](README.md).
   - No abort.
   - Two HTTPS requests at once have rebooted the bar, so `notion.ts` keeps one request on the wire.
 - No incoming connections: Notion webhooks cannot reach the bar. The open view is polled (`REFRESH_MS`).
+- `version` in `src/appmeta/settings.json` stays 1: raising it makes 1.4.1 drop the saved values ("Missing migration"), the token with them. New fields go in without a bump.
 - Notion:
   - a page is read as markdown (`GET /pages/{id}/markdown?markdown_version=v2`): one request, nested
     to-dos included, no block ids;
@@ -106,3 +107,13 @@ COPYFILE_DISABLE=1 tar --format ustar --uid 0 --gid 0 --uname root --gname root 
 ```
 
 Keep this file and README.md true to the code.
+
+## State (23.11.2026)
+
+- Done: browse and tick; status pick; confetti for Done-like statuses in any group; first-run guide (front "look at the back", back screen with the bar's addresses); token help text; subpage emoji fetched in the background; wheel stalls and memory; sounds dropped for this release.
+- "Today": JS on the bar has no time zone (`getTimezoneOffset()` is 0), so the offset comes from `GET /api/time` (`clock.ts`), asked every 10 minutes before a database read; dates are counted from UTC plus that offset.
+- Messages without a mark (`Set up`, `Bad token` and the like) start at the marks' column, x = 1: an empty place for a mark read as a gap.
+- Version 1.0.2: earlier releases 1.0.0 and 1.0.1 went out before the catalog, so the numbering goes on from them.
+- Catalog: `catalog.json` (productivity); `screenshots/front-1..4.png` and `back-1..2.png` are exact frames from `GET /api/screen` of a demo workspace, `back-2` from BUSY Bar Emulator. `busy-emulator check .` passes.
+- Checked on BUSY Bars on firmware 1.4.1; 104 tests pass. Over Wi-Fi `key=down` at the top of a list does nothing: `key=up` goes down the list.
+- Push as avachadev: `git -c credential.helper= -c "credential.helper=!f() { echo username=avachadev; echo password=$(gh auth token --user avachadev); }; f" push`.
