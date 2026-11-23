@@ -279,6 +279,8 @@ export async function readView(
   view: View,
   scope: Scope,
   now: Date,
+  /** The bar's UTC offset in minutes: what "today" means. */
+  offset: number,
   databases: Map<string, Database>,
   alive: Alive,
   onFirst?: (entries: Entry[], view: View) => void,
@@ -315,7 +317,7 @@ export async function readView(
   let response: Json | null = null;
   while (!response) {
     check(alive);
-    const body = queryBody(database.schema, scope, localDate(now), localDayStart(now), database.sorts);
+    const body = queryBody(database.schema, scope, localDate(now, offset), localDayStart(now, offset), database.sorts);
     try {
       response = await call(token, "POST", queryPath(database.dataSourceId, database.schema), body, reading(alive));
     } catch (err) {

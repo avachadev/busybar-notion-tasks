@@ -18,7 +18,7 @@ function fakeNotion(): { calls: string[] } {
 test("a read of a view the user has left stops at its next request", async () => {
   const notion = fakeNotion();
   let wanted = true;
-  const reading = readView("t", { kind: "root" }, "today", new Date(), new Map(), () => {
+  const reading = readView("t", { kind: "root" }, "today", new Date(), 0, new Map(), () => {
     // The user goes up while the first request is out.
     const now = wanted;
     wanted = false;
@@ -36,7 +36,7 @@ test("a page is one markdown request", async () => {
     const body = JSON.stringify({ object: "page_markdown", markdown: "- [ ] A\n  - [x] B" });
     return { ok: true, status: 200, json: async () => JSON.parse(body), text: async () => body } as unknown as Response;
   }) as typeof fetch;
-  const loaded = await readView("t", { kind: "page", id: "p", title: "" }, "today", new Date(), new Map(), () => true);
+  const loaded = await readView("t", { kind: "page", id: "p", title: "" }, "today", new Date(), 0, new Map(), () => true);
   assert.equal(calls.length, 1);
   assert.match(calls[0], /pages\/p\/markdown\?markdown_version=v2$/);
   assert.deepEqual(loaded.entries.map((e) => [e.title, e.done]), [["A", false], ["B", true]]);
@@ -47,7 +47,7 @@ test("a long page shows its first screen once, while the rest is read", async ()
   const body = JSON.stringify({ object: "page_markdown", markdown: md });
   globalThis.fetch = (async () => ({ ok: true, status: 200, json: async () => JSON.parse(body), text: async () => body }) as unknown as Response) as typeof fetch;
   const firsts: number[] = [];
-  const loaded = await readView("t", { kind: "page", id: "p", title: "" }, "today", new Date(), new Map(), () => true, (list) => firsts.push(list.length));
+  const loaded = await readView("t", { kind: "page", id: "p", title: "" }, "today", new Date(), 0, new Map(), () => true, (list) => firsts.push(list.length));
   assert.deepEqual(firsts, [8]);
   assert.equal(loaded.entries.length, 30);
 });
@@ -165,8 +165,39 @@ test("a start page that is a database is opened once: five requests, its rows re
     } else if (path === "data_sources/ds/query") body = { results: [{ object: "page", id: "r1", properties: { Name: { id: "title", title: [{ plain_text: "Row" }] }, Done: { id: "d", checkbox: false } } }], has_more: false };
     return { ok: true, status: 200, json: async () => body } as unknown as Response;
   }) as typeof fetch;
-  const loaded = await readView("t", { kind: "start", id: "db" }, "all", new Date(), new Map(), () => true);
+  const loaded = await readView("t", { kind: "start", id: "db" }, "all", new Date(), 0, new Map(), () => true);
   assert.deepEqual(calls, ["databases/db", "views", "views/v", "data_sources/ds", "data_sources/ds/query"]);
   assert.equal(loaded.view.kind, "database");
   assert.deepEqual(loaded.entries.map((e) => e.title), ["Row"]);
+});
+
+test("a database read asks for the bar's today: due on its date, done since its midnight", async () => {
+  let query: { filter: { or: { and: Record<string, unknown>[] }[] } } | null = null;
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    const path = String(url).replace(/.*v1\//, "").replace(/\?.*/, "");
+    let body: unknown = {};
+    if (path === "databases/db") body = { object: "database", title: [{ plain_text: "Tasks" }], data_sources: [{ id: "ds" }] };
+    else if (path === "views") body = { results: [] };
+    else if (path === "data_sources/ds") {
+      body = {
+        object: "data_source",
+        id: "ds",
+        properties: {
+          Name: { id: "title", name: "Name", type: "title" },
+          Done: { id: "d", name: "Done", type: "checkbox" },
+          Due: { id: "due", name: "Due", type: "date" },
+        },
+      };
+    } else if (path === "data_sources/ds/query") {
+      query = JSON.parse(String(init?.body));
+      body = { results: [], has_more: false };
+    }
+    return { ok: true, status: 200, json: async () => body } as unknown as Response;
+  }) as typeof fetch;
+  // 23:30 UTC on 23 November is 02:30 on the 24th in Moscow.
+  await readView("t", { kind: "start", id: "db" }, "today", new Date(Date.UTC(2026, 10, 23, 23, 30)), 180, new Map(), () => true);
+  const text = JSON.stringify(query);
+  assert.match(text, /"on_or_before":"2026-11-24"/);
+  assert.match(text, /"on_or_after":"2026-11-24T00:00:00\+03:00"/);
+  assert.doesNotMatch(text, /2026-11-23/);
 });

@@ -162,7 +162,11 @@ test("a status query tells open from done by every option", () => {
 });
 
 test("local midnight carries the bar's offset", () => {
-  assert.match(localDayStart(new Date(2026, 10, 6, 15, 0)), /^2026-11-06T00:00:00[+-]\d\d:\d\d$/);
+  const late = new Date(Date.UTC(2026, 10, 5, 22, 30));
+  assert.equal(localDayStart(late, 180), "2026-11-06T00:00:00+03:00");
+  assert.equal(localDayStart(late, 0), "2026-11-05T00:00:00+00:00");
+  assert.equal(localDayStart(new Date(Date.UTC(2026, 10, 6, 2, 0)), -300), "2026-11-05T00:00:00-05:00");
+  assert.equal(localDayStart(new Date(Date.UTC(2026, 10, 6, 20, 0)), 345), "2026-11-07T00:00:00+05:45");
 });
 
 test("reads titles from query results", () => {
@@ -277,8 +281,19 @@ test("open rows come before closed ones", () => {
   assert.deepEqual(openFirst([e("a", true), e("b", false), e("c", true), e("d", false)]).map((x) => x.id), ["b", "d", "a", "c"]);
 });
 
-test("today is the local date", () => {
-  assert.equal(localDate(new Date(2026, 0, 5, 23, 59)), "2026-01-05");
+test("today is the bar's date, not UTC's: across midnight both ways", () => {
+  // 22:30 UTC on 5 January: already the 6th in Moscow, still the 5th in London and New York.
+  const late = new Date(Date.UTC(2026, 0, 5, 22, 30));
+  assert.equal(localDate(late, 180), "2026-01-06");
+  assert.equal(localDate(late, 0), "2026-01-05");
+  assert.equal(localDate(late, -300), "2026-01-05");
+  // 02:00 UTC on 1 January: still 31 December in New York, the new year in Moscow.
+  const early = new Date(Date.UTC(2026, 0, 1, 2, 0));
+  assert.equal(localDate(early, -300), "2025-12-31");
+  assert.equal(localDate(early, 180), "2026-01-01");
+  // Half an hour zones: India at 18:29 and 18:30 UTC.
+  assert.equal(localDate(new Date(Date.UTC(2026, 10, 6, 18, 29)), 330), "2026-11-06");
+  assert.equal(localDate(new Date(Date.UTC(2026, 10, 6, 18, 30)), 330), "2026-11-07");
 });
 
 test("a quick check of the top level adds new pages and databases and renames the renamed", () => {

@@ -302,19 +302,22 @@ export function hasTag(field: DoneField | null): boolean {
   return field !== null && (field.kind === "select" || (field.kind === "status" && !field.asCheckbox));
 }
 
-/** "2026-11-06", by the bar's own clock and time zone. */
-export function localDate(now: Date): string {
-  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+
+/**
+ * "2026-11-06": the date `offset` minutes east of UTC, in the bar's time zone.
+ * Counted from UTC, since JS on the bar has no zone of its own (see clock.ts).
+ */
+export function localDate(now: Date, offset: number): string {
+  const local = new Date(now.getTime() + offset * 60000);
+  return `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}`;
 }
 
-/** Local midnight as an ISO timestamp with the bar's UTC offset: "2026-11-06T00:00:00+03:00". */
-export function localDayStart(now: Date): string {
-  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
-  const offset = -now.getTimezoneOffset();
+/** Midnight of that date as an ISO timestamp with the offset: "2026-11-06T00:00:00+03:00". */
+export function localDayStart(now: Date, offset: number): string {
   const sign = offset < 0 ? "-" : "+";
   const abs = Math.abs(offset);
-  return `${localDate(now)}T00:00:00${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+  return `${localDate(now, offset)}T00:00:00${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
 }
 
 /** How many rows one query asks for: more would not fit the app's memory, nor anyone's day. */

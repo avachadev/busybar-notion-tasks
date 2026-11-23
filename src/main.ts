@@ -21,6 +21,7 @@
 
 import manifest from "./appmeta/manifest.json";
 import { forgetOthers, type Level, load, save } from "./cache.ts";
+import { readOffset } from "./clock.ts";
 import { type Config, configKey, readConfig, tokenTag, usable } from "./config.ts";
 import { clearAll, deleteElements, drawElements, prepare } from "./display.ts";
 import { type SetupReason, type WebAddress, setupElements, webAddresses } from "./setup.ts";
@@ -58,6 +59,8 @@ const ROOT_REFRESH_MS = 10 * 60 * 1000;
 const ROOT_CHECK_MS = 15 * 1000;
 /** While the top level is on screen, the trash and one kept root are checked every this many reads of it. */
 const ROOT_DEEP_EVERY = 3;
+/** The bar's time zone is asked again this often: a change of zone or of summer time shows this soon. */
+const OFFSET_MS = 10 * 60 * 1000;
 /** A read waits until the wheel and buttons have been still this long: parsing an answer stalls the list. */
 const QUIET_MS = 2000;
 /** First retry after a failure, doubled on each further one up to MAX_RETRY_MS. */
@@ -220,6 +223,9 @@ function main(): void {
   let roots: Roots | null = null;
   /** Reads of the top level so far: every ROOT_DEEP_EVERY-th checks the trash and one kept root. */
   let rootReads = 0;
+  /** The bar's UTC offset in minutes, and when it was asked: "today" is the bar's day, not UTC's. */
+  let offset = 0;
+  let offsetAt = -Infinity;
   let sweeping = false;
   /** When the sweep pass under way started, for the log line at its end. */
   let passStartedAt = 0;
@@ -656,6 +662,19 @@ function main(): void {
     enter(current());
   }
 
+  /** The bar's offset, asked again when old; the last one known if the bar does not answer. */
+  async function barOffset(): Promise<number> {
+    if (Date.now() - offsetAt < OFFSET_MS) return offset;
+    try {
+      const read = await readOffset();
+      if (read !== null) offset = read;
+    } catch (err) {
+      report("time", err);
+    }
+    offsetAt = Date.now();
+    return offset;
+  }
+
   async function read(token: string, scope: Config["scope"]): Promise<void> {
     const readKey = key;
     const view = current();
@@ -696,7 +715,7 @@ function main(): void {
         ? { view, database: null, entries: kept.entries() }
         : quick
           ? { view, database: null, entries: mergeRoots(base, await readRecentRoots(token, still)) }
-          : await readView(token, view, scope, new Date(), databases, still, first);
+          : await readView(token, view, scope, new Date(), await barOffset(), databases, still, first);
       if (view.kind === "root" && !kept && !quick && readKey === key) rootReadAt = startedAt;
       const now = Date.now();
       const ticked = result.entries.map((e) => {
