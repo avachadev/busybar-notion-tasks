@@ -533,15 +533,16 @@ export function previewFrame(title: string, detail: string, kind: "page" | "data
 
 /**
  * Shown while there is no list: the title on the top line and, in grey under
- * it, what happened or what to do, on the preview's lines, from the list's
- * text x like every screen of the app. A message about a view has its mark at
- * the left; one about the app as a whole leaves the place empty, so the text
- * does not move between screens. An opaque black backdrop above everything
- * else hides whatever was on screen the moment the message is drawn.
+ * it, what happened or what to do, on the preview's lines. A message about a
+ * view has its mark at the left and its text at the list's text x; one about
+ * the app as a whole has no mark, and its text starts where the marks do: an
+ * empty place for a mark read as a gap. An opaque black
+ * backdrop above everything else hides whatever was on screen the moment the
+ * message is drawn.
  */
 export function messageFrame(title: string, detail: string, logo = false, kind: "page" | "database" | null = null, emoji = ""): Element[] {
   const x0 = listX(logo);
-  const textX = x0 + TEXT_INSET_X;
+  const textX = x0 + (kind ? TEXT_INSET_X : CHECKBOX_INSET_X);
   const room = SCREEN_W - 1 - textX;
   const line = (id: string, y: number, raw: string, color: string): Element => remember(`ml|${id}|${y}|${logo}|${color}|${raw}`, () => {
     const value = printable(raw);

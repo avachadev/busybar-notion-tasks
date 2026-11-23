@@ -23,7 +23,7 @@ test("without the logo the list takes the whole screen", () => {
   assert.equal(els.row1.width, 70);
   assert.equal(els.mark1.x, 1);
   assert.equal(els.text1.x, 10);
-  const msg = byId(messageFrame("All done", "for today"));
+  const msg = byId(messageFrame("All done", "for today", false, "database"));
   assert.equal(msg.icon, undefined);
   assert.equal(msg.m_title.x, 10);
 });
@@ -122,10 +122,11 @@ test("messages are two lines from the list's text x, on the preview's lines, the
   assert.equal(els.m_backdrop.width, 72);
   assert.ok((els.m_backdrop.z_index as number) > 2 && (els.m_title.z_index as number) > (els.m_backdrop.z_index as number));
   assert.ok((els.m_mark.z_index as number) > (els.m_backdrop.z_index as number));
-  // A message about the app has no mark, and its text stands where it would with one.
-  const app = byId(messageFrame("Set token", "in settings"));
+  // A message about the app has no mark, and its text starts where the marks do, with the logo or without.
+  const app = byId(messageFrame("Set up", "look at the back"));
   assert.equal(app.m_mark, undefined);
-  assert.equal(app.m_title.x, 10);
+  assert.deepEqual([app.m_title.x, app.m_detail.x], [1, 1]);
+  assert.equal(byId(messageFrame("Bad token", "look at the back", true)).m_title.x, 11);
   // As on the preview of a page.
   const preview = byId(previewFrame("Projects", "3 tasks", "page"));
   assert.deepEqual([app.m_title.y, app.m_detail.y], [preview.toptitle.y, preview.topdetail.y]);
