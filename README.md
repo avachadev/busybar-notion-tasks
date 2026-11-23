@@ -23,7 +23,9 @@ You need a BUSY Bar on firmware **1.4.1 or newer**, connected to Wi-Fi, and a No
    [latest release](https://github.com/avachadev/busybar-notion-tasks/releases/latest).
 2. Open the bar's web interface: `http://10.0.4.20` when the bar is plugged in by USB, or the bar's IP
    address on Wi-Fi. Go to **Apps → Add app** and pick the file.
-3. Create a Notion token (see below) and paste it into **Apps → Tasks for Notion → Notion token**.
+3. Create a Notion token (see below).
+4. Start the app on the bar. Until it has a token, the back display shows the address of the bar's web
+   interface and where to paste the token: **Apps → Tasks for Notion → Notion token**.
 
 Your top-level pages appear on the bar a few seconds later.
 
@@ -31,9 +33,10 @@ Your top-level pages appear on the bar a few seconds later.
 
 Either of these works.
 
-- **A personal access token** is the quickest. In Notion's Developer portal open **Personal access
-  tokens → New token**, give it access to the Notion API and copy the token
-  ([Notion's guide](https://developers.notion.com/guides/get-started/personal-access-tokens)). It sees
+- **A personal access token** is the quickest. Open
+  [app.notion.com/developers/tokens](https://app.notion.com/developers/tokens), create a new token with
+  access to the Notion API and copy it
+  ([Notion's guide](https://developers.notion.com/guides/connections-and-tokens/personal-access-tokens)). It sees
   everything you can see, with nothing to share. Depending on your plan, only workspace owners may be
   allowed to create one.
 - **An internal connection** sees only the pages you share with it, which makes it the safer choice.
@@ -54,13 +57,12 @@ page and may hold its own to-dos, and the bar does not read it before you open i
 when its text mentions or links a Notion page. Such a task has a chevron › at the right. The first
 **OK** points at it: everything else dims and the bar's cursor `▶` stands before the part pointed at, the
 wheel moves between the title and the mark (the checkbox or the status), **OK** on the title opens it and
-on the mark acts on it. A to-do without a link ticks at
-once.
+on the mark acts on it. A to-do without a link ticks at once.
 
 A row of a database with a status (or a select) fills the screen: its title above, its status below as
-a tag in the option's colour. **OK** on the tag chooses the status in place: the bar's value arrows `‹ ›` appear on both sides, as for a
-setting in SETTINGS,
-the wheel goes through the database's options, **OK** writes the one on show, **Back** keeps the old one.
+a tag in the option's colour. **OK** on the tag chooses the status in place: the bar's value arrows
+`‹ ›` appear on both sides, as for a setting in SETTINGS, the wheel goes through the database's
+options, **OK** writes the one on show, **Back** keeps the old one.
 A status the database's view shows as a checkbox stays a checkbox.
 
 | Entry | Looks like |
@@ -150,8 +152,8 @@ Changes apply within a few seconds, without restarting the app. A new **Show** k
 
 | Screen | Meaning |
 | --- | --- |
-| `Set token` | No token in the settings yet. |
-| `Bad token` | Notion does not accept the token: it was mistyped, revoked or has expired. |
+| `Set up` | No token in the settings yet. The back display says *Connect Notion*, with the address to open and where to paste the token. |
+| `Bad token` | Notion does not accept the token: it was mistyped, revoked or has expired. The back display says *Token not accepted* and where to paste a new one. |
 | `No pages` | The token sees nothing. An internal connection needs pages shared with it. |
 | `No access` | The page or database is not shared with the token, or it was deleted. |
 | `Can't read` | None of the database's data sources has a title property. |
