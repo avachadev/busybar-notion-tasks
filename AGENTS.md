@@ -114,6 +114,6 @@ Keep this file and README.md true to the code.
 - "Today": JS on the bar has no time zone (`getTimezoneOffset()` is 0), so the offset comes from `GET /api/time` (`clock.ts`), asked every 10 minutes before a database read; dates are counted from UTC plus that offset.
 - Messages without a mark (`Set up`, `Bad token` and the like) start at the marks' column, x = 1: an empty place for a mark read as a gap.
 - Version 1.0.2: earlier releases 1.0.0 and 1.0.1 went out before the catalog, so the numbering goes on from them.
-- Catalog: `catalog.json` (productivity); `screenshots/front-1..4.png` and `back-1..2.png` are exact frames from `GET /api/screen` of a demo workspace, `back-2` from BUSY Bar Emulator. `busy-emulator check .` passes.
+- Catalog: `catalog.json` (productivity); `screenshots/front-2..4.png` and `back-1..2.png` are exact frames from `GET /api/screen` of a demo workspace, `back-2` from BUSY Bar Emulator. `front-1` (1.0.3) is composed: the list drawn by the app's own `listFrame` on the emulator, white done text, the confetti of a bar capture laid over it and cleared off the letters. `busy-emulator check .` passes.
 - Checked on BUSY Bars on firmware 1.4.1; 104 tests pass. Over Wi-Fi `key=down` at the top of a list does nothing: `key=up` goes down the list.
 - Push as avachadev: `git -c credential.helper= -c "credential.helper=!f() { echo username=avachadev; echo password=$(gh auth token --user avachadev); }; f" push`.

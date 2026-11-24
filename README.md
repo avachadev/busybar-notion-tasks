@@ -257,7 +257,7 @@ Over Wi-Fi add `-- --addr <bar-ip>` (and `--password <password>` if the bar has 
 | `test/` | Unit tests, run with Node's built-in test runner. |
 
 Releases are built by GitHub Actions: push a tag equal to the version in `src/appmeta/manifest.json`
-(e.g. `1.0.2`) and the workflow attaches `app.avachadev.notiontasks.tgz` to the release.
+(e.g. `1.0.3`) and the workflow attaches `app.avachadev.notiontasks.tgz` to the release.
 
 ## License
 

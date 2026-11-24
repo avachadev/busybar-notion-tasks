@@ -2,7 +2,7 @@
   "format_version": 1,
   "id": "app.avachadev.notiontasks",
   "name": "Tasks for Notion",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api_version": "27.15.0",
   "description": "Browse Notion and tick tasks off from the BUSY Bar",
   "author": "avachadev",
